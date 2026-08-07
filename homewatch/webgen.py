@@ -180,6 +180,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
         <option value="8">언덕까지 (&lt;8%)</option>
       </select>
     </div>
+    <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" placeholder="0"></div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
@@ -192,6 +193,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <th data-k="complex_name">단지 <span class="arrow"></span></th>
       <th data-k="_price">호가 <span class="arrow"></span></th>
       <th data-k="real_gap_pct" class="hide-m">실거래 대비 <span class="arrow"></span></th>
+      <th data-k="_vol21" class="hide-m">21년 거래 <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -225,6 +227,7 @@ DATA.forEach(a => {
   a._price = a.trade_type === "A1" ? a.deal_price : a.warranty_price;
   const eff = a.trade_type === "A1" ? a.deal_price : a.warranty_price + a.rent_price*12/RATE;
   a._ppp = a.exclusive_m2 ? eff / (a.exclusive_m2/PY) : 0;
+  a._vol21 = a.vol_2021 ? a.vol_2021.per_month : null;
 });
 
 function loadWeights(){
@@ -285,6 +288,12 @@ function rpText(a){
   const p = a.trade_type === "A1" ? wonShort(rs.all.avg)
     : wonShort(rs.all.avg) + (rs.all.rent_avg ? "/"+Math.round(rs.all.rent_avg/1e4)+"만" : "");
   return '<div class="rp">실거래 평균 '+p+' <span style="opacity:.7">('+rs.months+'개월 '+rs.total+'건)</span></div>'; }
+function volCell(a){
+  const v = a.vol_2021;
+  if (!v) return "-";
+  const cls = v.per_month >= 1 ? "down" : (v.count === 0 ? "up" : "");
+  return '<span class="rp"><span class="'+cls+'">월 '+v.per_month+'</span>건</span>'; }
+
 function gapCell(a){
   if (a.trade_type !== "A1" || a.real_gap_pct == null) return "-";
   const g = a.real_gap_pct;
@@ -326,6 +335,7 @@ function filtered(){
   const walkMax = parseFloat(document.getElementById("fWalk").value);
   const farMax = parseFloat(document.getElementById("fFar").value);
   const scMin = parseFloat(document.getElementById("fScore").value);
+  const volMin = parseFloat(document.getElementById("fVol").value);
   const slopeMax = parseFloat(document.getElementById("fSlope").value);
   const noLease = document.getElementById("fNoLease").checked;
   const lowOk = document.getElementById("fLowOk").checked;
@@ -343,6 +353,7 @@ function filtered(){
     if (!isNaN(farMax) && (a.floor_area_ratio==null || a.floor_area_ratio > farMax)) return false;
     if (!isNaN(slopeMax) && !(a.grade_pct != null && a.grade_pct < slopeMax)) return false;
     if (!isNaN(scMin) && a.score_total < scMin) return false;
+    if (!isNaN(volMin) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
@@ -387,6 +398,7 @@ function render(){
         '<div class="sub">'+a.sigu+' '+a.dong+(a.bld_dong?' · '+a.bld_dong+'동':'')+(a.floor_info?' · '+a.floor_info+'층':'')+'</div></td>' +
       '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
       '<td class="hide-m">'+gapCell(a)+'</td>' +
+      '<td class="hide-m">'+volCell(a)+'</td>' +
       '<td>'+(a.exclusive_m2||"-")+'㎡</td>' +
       '<td class="hide-m">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
       '<td class="hide-m">'+(a.households||"-")+'</td>' +
@@ -399,7 +411,7 @@ function render(){
   tb.appendChild(frag);
   if (rows.length > 500) {
     const tr = document.createElement("tr");
-    tr.innerHTML = '<td colspan="10" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
+    tr.innerHTML = '<td colspan="11" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
     tb.appendChild(tr);
   }
 }
@@ -501,7 +513,7 @@ function toggleDetail(tr, a){
         ' · <a href="https://new.land.naver.com/complexes/'+v.complex_no+'?articleNo='+v.article_no+'" target="_blank" rel="noopener">보기</a>'+
         (v.description?'<div class="sub">'+v.description+'</div>':'')+'</div>').join("") + '</div>';
   }
-  d.innerHTML = '<td colspan="10">' +
+  d.innerHTML = '<td colspan="11">' +
     '<div class="bars">'+bars+'</div>' +
     '<div class="facts">'+facts+'</div>' +
     (a.description ? '<div class="desc">📝 '+a.description+'</div>' : '') +
