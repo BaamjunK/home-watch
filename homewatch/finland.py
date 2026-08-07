@@ -26,6 +26,8 @@ COMPLEX_URL = "/front-api/v1/complex/legalDivisionComplexList"
 DETAIL_URL = "/front-api/v1/complex"   # GET ?complexNumber= — 임대세대·주차·용적률 등
 PYEONG_URL = "/front-api/v1/complex/pyeongGroups"        # GET ?complexNumber=
 REALPRICE_URL = "/front-api/v1/complex/v2/pyeong/realPrice"  # GET ?complexNumber&tradeType&pyeongTypeNumber&page&size
+# 기간 조회 — startDate/endDate 필수 (endDate 만 주면 400)
+REALPRICE_RANGE_URL = "/front-api/v1/complex/pyeong/realPrice/list"
 HOME_URL = "https://fin.land.naver.com/home"
 PAGE_SIZE = 30
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
@@ -330,18 +332,37 @@ class FinLandClient:
         self.detail_cache.put(key, out)
         return out
 
-    def real_prices(self, complex_no: str, pyeong_no: int, trade_type: str, size: int = 3):
-        """평형·거래유형별 최근 실거래 — [{date, floor, deal, deposit, rent}]."""
-        key = f"rp:{complex_no}:{pyeong_no}:{trade_type}"
+    @staticmethod
+    def _rows(raw):
+        return [{"date": r.get("tradeDate"), "floor": r.get("floor"),
+                 "deal": r.get("dealPrice") or 0, "deposit": r.get("deposit") or 0,
+                 "rent": r.get("monthlyRent") or 0}
+                for r in (raw or []) if not r.get("isDelete")]
+
+    def real_prices(self, complex_no: str, pyeong_no: int, trade_type: str, size: int = 100):
+        """평형·거래유형별 최근 실거래 — [{date, floor, deal, deposit, rent}] 최신순."""
+        key = f"rp2:{complex_no}:{pyeong_no}:{trade_type}"
         hit = self.realprice_cache.get(key)
         if hit is not None:
             return hit
         res = self._get_json(
             f"{REALPRICE_URL}?complexNumber={complex_no}&tradeType={trade_type}"
             f"&pyeongTypeNumber={pyeong_no}&page=0&size={size}") or {}
-        out = [{"date": row.get("tradeDate"), "floor": row.get("floor"),
-                "deal": row.get("dealPrice") or 0, "deposit": row.get("deposit") or 0,
-                "rent": row.get("monthlyRent") or 0}
-               for row in (res.get("list") or []) if not row.get("isDelete")]
+        out = self._rows(res.get("list"))
         self.realprice_cache.put(key, out)
+        return out
+
+    def real_prices_range(self, complex_no: str, pyeong_no: int, trade_type: str,
+                          start_date: str, end_date: str):
+        """기간 지정 실거래 — 거래량 집계용. 기간 데이터는 확정이라 30일 캐시."""
+        key = f"rpr:{complex_no}:{pyeong_no}:{trade_type}:{start_date}"
+        hit = self.detail_cache.get(key)
+        if hit is not None:
+            return hit
+        raw = self._get_json(
+            f"{REALPRICE_RANGE_URL}?complexNumber={complex_no}&pyeongTypeNumber={pyeong_no}"
+            f"&realEstateType=A01&tradeType={trade_type}"
+            f"&startDate={start_date}&endDate={end_date}")
+        out = self._rows(raw if isinstance(raw, list) else (raw or {}).get("list"))
+        self.detail_cache.put(key, out)
         return out

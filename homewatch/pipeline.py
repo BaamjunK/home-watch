@@ -190,8 +190,49 @@ def attach_poi(fin, rows):
         a["poi"] = results.get(a["complex_no"])
 
 
+LOW_FLOOR_MAX = 3          # 1~3층을 저층으로 본다
+RECENT_MONTHS = 6          # 실거래 평균 기본 기간 (부족하면 12개월로 확대)
+VOLUME_YEAR = "2021"       # 거래 활발도 비교 기준 연도 (직전 상승장)
+
+
+def summarize_real_prices(rows, trade_type):
+    """최근 실거래를 저층/일반층으로 나눠 평균 요약.
+
+    6개월 안에 거래가 없으면 12개월로 확대한다. 반환에 사용한 기간(months)을
+    담아 대시보드에서 "6개월/1년 평균"을 구분해 보여준다.
+    """
+    import datetime
+    today = datetime.date.today()
+
+    def within(months):
+        cut = (today - datetime.timedelta(days=int(30.4 * months))).isoformat()
+        return [r for r in rows if (r.get("date") or "") >= cut]
+
+    used, months = within(RECENT_MONTHS), RECENT_MONTHS
+    if not used:
+        used, months = within(12), 12
+    if not used:
+        return None
+
+    def price(r):
+        return r["deal"] if trade_type == "A1" else r["deposit"]
+
+    def agg(subset):
+        if not subset:
+            return None
+        return {"avg": round(sum(price(r) for r in subset) / len(subset)),
+                "count": len(subset),
+                "rent_avg": (round(sum(r["rent"] for r in subset) / len(subset))
+                             if trade_type == "B2" else 0)}
+
+    low = [r for r in used if (r.get("floor") or 99) <= LOW_FLOOR_MAX]
+    high = [r for r in used if (r.get("floor") or 99) > LOW_FLOOR_MAX]
+    return {"months": months, "total": len(used),
+            "low": agg(low), "high": agg(high), "all": agg(used)}
+
+
 def attach_real_prices(fin, rows):
-    """평형 매칭 후 최근 실거래 3건 부착 + 호가-실거래 갭 계산.
+    """평형 매칭 후 실거래 요약(저층/일반층 평균) + 2021년 거래량 + 호가 갭.
 
     평형 매칭: 단지 평형 목록에서 전용면적이 가장 가까운 것(오차 ≤1.5㎡).
     """
@@ -225,11 +266,15 @@ def attach_real_prices(fin, rows):
         a["pyeong_name"] = t["name"] if t else None
         a["pyeong_households"] = t["households"] if t else None
         a["real_prices"] = []
+        a["real_summary"] = None
+        a["vol_2021"] = None
         a["real_gap_pct"] = None
         if not t:
             continue
         try:
             rp = fin.real_prices(a["complex_no"], t["number"], a["trade_type"])
+            vol = fin.real_prices_range(a["complex_no"], t["number"], a["trade_type"],
+                                        f"{VOLUME_YEAR}-01-01", f"{VOLUME_YEAR}-12-31")
         except Exception as e:
             fkey = (a["complex_no"], t["number"], a["trade_type"])
             if fkey not in fetched:
@@ -241,7 +286,10 @@ def attach_real_prices(fin, rows):
             if done % 300 == 0:
                 print(f"   … 실거래 {done}건 매칭", flush=True)
                 fin.realprice_cache.save()
-        a["real_prices"] = rp
+                fin.detail_cache.save()
+        a["real_prices"] = rp[:3]        # 원본 이력은 최근 3건만 보관
+        a["real_summary"] = summarize_real_prices(rp, a["trade_type"])
+        a["vol_2021"] = {"count": len(vol), "per_month": round(len(vol) / 12, 1)}
         if rp and a["trade_type"] == "A1" and rp[0].get("deal"):
             a["real_gap_pct"] = round((a["deal_price"] - rp[0]["deal"]) / rp[0]["deal"] * 100, 1)
 

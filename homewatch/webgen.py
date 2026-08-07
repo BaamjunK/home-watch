@@ -278,12 +278,11 @@ function priceText(a){
   return a.trade_type === "A1" ? won(a.deal_price)
     : won(a.warranty_price) + " / " + Math.round(a.rent_price/1e4) + "만"; }
 function rpText(a){
-  const rp = (a.real_prices||[])[0];
-  if (!rp) return "";
-  const d = (rp.date||"").slice(5);
-  if (a.trade_type === "A1")
-    return '<div class="rp">실거래 '+wonShort(rp.deal)+' · '+d+'</div>';
-  return '<div class="rp">실거래 '+wonShort(rp.deposit)+'/'+Math.round(rp.rent/1e4)+'만 · '+d+'</div>'; }
+  const rs = a.real_summary;
+  if (!rs || !rs.all) return "";
+  const p = a.trade_type === "A1" ? wonShort(rs.all.avg)
+    : wonShort(rs.all.avg) + (rs.all.rent_avg ? "/"+Math.round(rs.all.rent_avg/1e4)+"만" : "");
+  return '<div class="rp">실거래 평균 '+p+' <span style="opacity:.7">('+rs.months+'개월 '+rs.total+'건)</span></div>'; }
 function gapCell(a){
   if (a.trade_type !== "A1" || a.real_gap_pct == null) return "-";
   const g = a.real_gap_pct;
@@ -422,13 +421,15 @@ function toggleDetail(tr, a){
             '<div class="g"><i style="width:'+(v==null?0:v*10)+'%"></i></div>' +
             '<div class="help" id="help-'+k+'">'+SCORE_HELP[k]+'</div></div>';
   }
-  // 실거래 이력
-  let rpHist = "";
-  if (a.real_prices && a.real_prices.length) {
-    rpHist = a.real_prices.map(r => {
-      const p = a.trade_type==="A1" ? wonShort(r.deal) : wonShort(r.deposit)+"/"+Math.round(r.rent/1e4)+"만";
-      return (r.date||"") + " " + (r.floor?r.floor+"층 ":"") + p;
-    }).join(" · ");
+  // 실거래 요약 — 저층(1~3층) / 일반층 평균
+  const rs = a.real_summary;
+  const money = g => a.trade_type==="A1" ? wonShort(g.avg)
+      : wonShort(g.avg) + (g.rent_avg ? "/"+Math.round(g.rent_avg/1e4)+"만" : "");
+  let rpAll = "이력 없음", rpLow = null, rpHigh = null;
+  if (rs) {
+    rpAll = money(rs.all) + " <span class='sub'>(" + rs.months + "개월 " + rs.total + "건)</span>";
+    if (rs.low)  rpLow  = money(rs.low)  + " <span class='sub'>(" + rs.low.count + "건)</span>";
+    if (rs.high) rpHigh = money(rs.high) + " <span class='sub'>(" + rs.high.count + "건)</span>";
   }
   // 전세가율/갭 (매매)
   let jeonseFacts = "";
@@ -439,8 +440,13 @@ function toggleDetail(tr, a){
       fact("단지 전세 호가", wonShort(a.jeonse_min)+" ~ "+wonShort(a.jeonse_max)+" (전세가율 "+ratio+"%)") +
       fact("갭(호가-전세최고)", wonShort(gap), gap <= 300000000 ? "good" : "");
   }
+  const vol = a.vol_2021;
   const facts =
-    fact("최근 실거래", rpHist || "이력 없음") +
+    fact("실거래 평균", rpAll) +
+    fact("저층 1~3층", rpLow) +
+    fact("일반층 4층~", rpHigh) +
+    (vol ? fact("2021년 거래량", vol.count + "건 · 월 " + vol.per_month + "건",
+                vol.per_month >= 1 ? "good" : (vol.count === 0 ? "warn" : "")) : "") +
     (a.trade_type==="A1" && a.real_gap_pct != null
       ? fact("실거래 대비 호가", (a.real_gap_pct>0?"+":"")+a.real_gap_pct+"%",
              a.real_gap_pct <= 0 ? "good" : (a.real_gap_pct >= 10 ? "warn" : "")) : "") +
@@ -554,7 +560,7 @@ def render(rows, cfg, out_path: Path):
             "coverage_ratio", "construction_company", "highest_floor",
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
             "station_name", "station_m", "station_walk_min",
-            "real_prices", "real_gap_pct", "jeonse_min", "jeonse_max",
+            "real_prices", "real_summary", "vol_2021", "real_gap_pct", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])
