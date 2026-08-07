@@ -24,6 +24,8 @@ from pathlib import Path
 ARTICLE_URL = "/front-api/v1/article/legalDivisionArticleList"
 COMPLEX_URL = "/front-api/v1/complex/legalDivisionComplexList"
 DETAIL_URL = "/front-api/v1/complex"   # GET ?complexNumber= — 임대세대·주차·용적률 등
+PYEONG_URL = "/front-api/v1/complex/pyeongGroups"        # GET ?complexNumber=
+REALPRICE_URL = "/front-api/v1/complex/v2/pyeong/realPrice"  # GET ?complexNumber&tradeType&pyeongTypeNumber&page&size
 HOME_URL = "https://fin.land.naver.com/home"
 PAGE_SIZE = 30
 UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
@@ -107,6 +109,8 @@ def _parse_complex(item):
         "lng": coord.get("xCoordinate"),
         "deal_min": price.get("dealMinPrice") or 0,   # 단지 매매 호가 최저 (원)
         "deal_max": price.get("dealMaxPrice") or 0,
+        "jeonse_min": price.get("rentMinPrice") or 0,  # 전세 호가 범위 (원)
+        "jeonse_max": price.get("rentMaxPrice") or 0,
     }
 
 
@@ -145,6 +149,8 @@ class FinLandClient:
         self.cache = TTLCache(cache_path, ttl_hours)
         # 단지 상세(임대세대·주차·용적률)는 거의 안 바뀌므로 30일 캐시
         self.detail_cache = TTLCache(cache_path.parent / "finland_detail.json", 24 * 30)
+        # 실거래가는 신고 반영이 느리므로 12시간 캐시 (하루 1~2회 갱신)
+        self.realprice_cache = TTLCache(cache_path.parent / "finland_realprice.json", 12)
         self.interval = interval_sec
         self.max_pages = max_pages
         self.headless = headless
@@ -160,6 +166,7 @@ class FinLandClient:
     def __exit__(self, *exc):
         self.cache.save()
         self.detail_cache.save()
+        self.realprice_cache.save()
         try:
             if self._browser:
                 self._browser.close()
@@ -257,7 +264,7 @@ class FinLandClient:
                 "complexPagingRequest": {"size": PAGE_SIZE, "userChannelType": "MOBILE",
                                          "complexSortType": "POPULARITY_DESC", "lastInfo": []}}
         rows = self._paged(COMPLEX_URL, body, "complexPagingRequest",
-                           _parse_complex, f"cplx2:{dong_code}")
+                           _parse_complex, f"cplx3:{dong_code}")
         return {c["complex_no"]: c for c in rows}
 
     def complex_detail(self, complex_no: str):
@@ -288,4 +295,53 @@ class FinLandClient:
                 bool(res.get("isRestrictedTransferOfReconstructionAssociationMembership")),
         }
         self.detail_cache.put(key, out)
+        return out
+
+    def _get_json(self, url, _retried=False):
+        self._throttle()
+        try:
+            r = self._page.evaluate(FETCH_JS, {"url": url, "body": None})
+        except Exception:
+            if _retried:
+                raise
+            self._open_browser()
+            return self._get_json(url, _retried=True)
+        if r["status"] != 200:
+            raise RuntimeError(f"GET {url.split('?')[0]} {r['status']}")
+        d = json.loads(r["text"])
+        if isinstance(d, dict) and d.get("isSuccess") is False:
+            raise RuntimeError(f"GET 실패: {r['text'][:100]}")
+        return d.get("result") if isinstance(d, dict) else d
+
+    def pyeong_types(self, complex_no: str):
+        """단지 평형 목록 — [{number, exclusive, name}]. 30일 캐시."""
+        key = f"pyeong:{complex_no}"
+        hit = self.detail_cache.get(key)
+        if hit is not None:
+            return hit
+        groups = self._get_json(f"{PYEONG_URL}?complexNumber={complex_no}") or []
+        out = []
+        for g in groups:
+            for t in g.get("pyeongTypes") or []:
+                if t.get("number") is not None:
+                    out.append({"number": t["number"], "name": t.get("name"),
+                                "exclusive": t.get("exclusiveArea"),
+                                "households": t.get("householdCount") or 0})
+        self.detail_cache.put(key, out)
+        return out
+
+    def real_prices(self, complex_no: str, pyeong_no: int, trade_type: str, size: int = 3):
+        """평형·거래유형별 최근 실거래 — [{date, floor, deal, deposit, rent}]."""
+        key = f"rp:{complex_no}:{pyeong_no}:{trade_type}"
+        hit = self.realprice_cache.get(key)
+        if hit is not None:
+            return hit
+        res = self._get_json(
+            f"{REALPRICE_URL}?complexNumber={complex_no}&tradeType={trade_type}"
+            f"&pyeongTypeNumber={pyeong_no}&page=0&size={size}") or {}
+        out = [{"date": row.get("tradeDate"), "floor": row.get("floor"),
+                "deal": row.get("dealPrice") or 0, "deposit": row.get("deposit") or 0,
+                "rent": row.get("monthlyRent") or 0}
+               for row in (res.get("list") or []) if not row.get("isDelete")]
+        self.realprice_cache.put(key, out)
         return out

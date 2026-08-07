@@ -2,15 +2,16 @@
 
 항목(기본 가중치, config.score_weights 로 조정):
   value    35  같은 (시군구, 거래유형, 면적밴드) 안에서 평(3.3㎡)당 가격이 싼 정도
-  transit  20  판교·강남·여의도·시청 4대 업무지구 종합 접근성(직선거리 근사)
-  school   10  시군구/동 단위 학군 평판 (정적 테이블)
-  infra    10  상업·생활 인프라 (정적 테이블)
+  transit  20  4대 업무지구 접근성 70% + 최기역 도보 30%
+  school   10  단지 반경 실측 학군 (학원 밀집 + 배정 중학교 과밀도 + 명문고 + 초품아)
+  infra    10  단지 반경 실측 인프라 (백화점·마트·병원·약국·편의점·공원)
   scale_age 15 단지 세대수 + 연식(신축/재건축 잠재 반영)
-  slope    10  단지 주변 경사도 (SRTM 고도 기반, 평지일수록 높음)
+  slope    10  단지 주변 경사도 (위성 DEM 2종 평면 피팅, 평지일수록 높음)
 
-학군/인프라는 공개 지표를 단순화한 편집 점수다(0~10).
-근거: 학군 — 특목·자사고 진학률과 학원가(대치·목동·중계·평촌·분당) 통념,
-인프라 — 백화점/대형몰/종합병원 밀집도. 필요하면 표만 고치면 된다.
+학군·인프라는 2026-08-07 부터 시군구 편집 점수가 아니라 **단지 좌표 반경 실측**
+(poi.py)이다. 특목고 진학률 원본(학교알리미)은 SPA·세션 구조라 대량 수집이
+불가능해, 진학 성과와 상관이 높은 학원 밀집도와 배정 중학교 과밀도로 대체한다.
+시군구 테이블은 POI 수집 실패 시 폴백으로만 남겨둔다.
 """
 
 import math
@@ -80,13 +81,94 @@ def transit_score(lat, lon, hubs, station_walk_min=None):
     return round(hub * 0.7 + st * 0.3, 1)
 
 
-def school_score(sigu, dong):
+def school_score_fallback(sigu, dong):
+    """POI 수집 실패 시에만 쓰는 시군구 편집 점수."""
     base = _table_lookup(SCHOOL_BY_SIGU, sigu or "")
     return round(min(10.0, base + SCHOOL_DONG_BONUS.get(dong or "", 0)), 1)
 
 
-def infra_score(sigu):
+def infra_score_fallback(sigu):
     return _table_lookup(INFRA_BY_SIGU, sigu or "")
+
+
+def _band(v, thresholds, scores):
+    """v 가 thresholds 구간 어디에 드는지 → scores 값. thresholds 는 오름차순."""
+    for t, s in zip(thresholds, scores):
+        if v <= t:
+            return s
+    return scores[-1]
+
+
+def school_score(poi, sigu, dong):
+    """단지 반경 실측 학군 점수 (0~10).
+
+    학원 밀집 35% — 특목고 진학률과 상관이 가장 높은 공개 지표. 반경 1km 학원
+      수를 구간 스케일로(10곳 3점 → 150곳 이상 10점), 500m 내 학원가는 가점.
+    중학교 과밀도 25% — 배정 중학교 학급당 학생수 ÷ 시 평균. 학군 선호 지역은
+      전입 수요로 과밀해진다(대치 대청중 1.63배, 서울 평균 1.0).
+    초품아 25% — 초등학교 거리. 200m 이내 만점으로 단지 바로 옆 학교를 우대한다.
+    명문고 근접 15% — 반경 2km 내 외고·과학고·국제고·주요 자사고.
+    """
+    if not poi:
+        return school_score_fallback(sigu, dong)
+    ac = poi.get("academy_1km") or 0
+    ac_score = _band(ac, [3, 10, 25, 50, 80, 120], [1.0, 3.0, 5.0, 7.0, 8.5, 9.5])
+    if ac >= 150:
+        ac_score = 10.0
+    if (poi.get("academy_500m") or 0) >= 40:      # 학원가 한복판
+        ac_score = min(10.0, ac_score + 1.0)
+
+    cr = poi.get("middle_crowding")
+    cr_score = 5.0 if cr is None else _band(
+        cr, [0.75, 0.9, 1.05, 1.2, 1.35], [2.0, 4.0, 5.5, 7.5, 9.0])
+    if cr is not None and cr > 1.5:
+        cr_score = 10.0
+
+    elite = len(poi.get("elite_high") or [])
+    el_score = _band(elite, [0, 1, 2], [3.0, 7.0, 9.0])
+    if elite >= 3:
+        el_score = 10.0
+
+    em = poi.get("elem_near_m")
+    em_score = 2.0 if em is None else _band(
+        em, [200, 350, 500, 800, 1000], [10.0, 8.5, 7.0, 5.0, 3.0])
+
+    total = ac_score * 0.35 + cr_score * 0.25 + em_score * 0.25 + el_score * 0.15
+    return round(min(10.0, total), 1)
+
+
+def infra_score(poi, sigu):
+    """단지 반경 실측 인프라 점수 (0~10).
+
+    백화점 20%(3km 내 거리) / 대형마트 20%(1km 개수+거리) / 병원 20%(1km 개수)
+    / 생활편의 20%(편의점 500m + 약국 1km) / 공원 20%(1km 개수·거리)
+    """
+    if not poi:
+        return infra_score_fallback(sigu)
+    dp = poi.get("dept_near_m")
+    dp_score = 1.0 if dp is None else _band(dp, [500, 1000, 2000, 3000], [10.0, 8.5, 6.5, 4.0])
+
+    mt_n, mt_d = poi.get("mart_1km") or 0, poi.get("mart_near_m")
+    mt_score = _band(mt_n, [0, 1, 2], [2.0, 6.0, 8.0])
+    if mt_n >= 3:
+        mt_score = 10.0
+    if mt_n == 0 and mt_d is not None:
+        mt_score = _band(mt_d, [1500, 2500, 3000], [4.0, 2.5, 1.5])
+
+    hp_score = _band(poi.get("hospital_1km") or 0, [0, 5, 20, 50, 80], [1.0, 4.0, 6.0, 8.0, 9.0])
+    if (poi.get("hospital_1km") or 0) >= 100:
+        hp_score = 10.0
+
+    conv = (poi.get("conv_500m") or 0) + (poi.get("pharmacy_1km") or 0) * 0.5
+    cv_score = _band(conv, [3, 10, 25, 50, 80], [2.0, 4.5, 6.5, 8.0, 9.0])
+    if conv >= 100:
+        cv_score = 10.0
+
+    pk_a, pk_d = poi.get("park_area_ha") or 0, poi.get("park_near_m")
+    pk_score = 2.0 if pk_d is None else _band(pk_d, [200, 400, 700, 1000], [10.0, 8.0, 6.0, 4.0])
+
+    total = dp_score * 0.20 + mt_score * 0.20 + hp_score * 0.20 + cv_score * 0.20 + pk_score * 0.20
+    return round(min(10.0, total), 1)
 
 
 def scale_age_score(households, use_date, is_jgc):
@@ -224,8 +306,8 @@ def score_articles(articles, weights, hubs):
             "value": vals.get(a["article_no"], 5.0),
             "transit": transit_score(a.get("lat"), a.get("lng"), hubs,
                                      a.get("station_walk_min")),
-            "school": school_score(a.get("sigu"), a.get("dong")),
-            "infra": infra_score(a.get("sigu")),
+            "school": school_score(a.get("poi"), a.get("sigu"), a.get("dong")),
+            "infra": infra_score(a.get("poi"), a.get("sigu")),
             "scale_age": scale_age_score(a.get("households") or 0, a.get("use_date"), a.get("is_jgc")),
             "slope": slope_score(a.get("grade_pct")),
         }

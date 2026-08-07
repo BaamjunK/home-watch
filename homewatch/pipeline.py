@@ -156,8 +156,94 @@ def collect(cfg):
             a["construction_company"] = det.get("construction_company")
             a["highest_floor"] = det.get("highest_floor")
             a["jgc_transfer_restricted"] = det.get("jgc_transfer_restricted", False)
+            c = cplx_meta.get(a["complex_no"], {})
+            a["jeonse_min"] = c.get("jeonse_min") or 0   # 단지 전세 호가 범위
+            a["jeonse_max"] = c.get("jeonse_max") or 0
+
+        attach_real_prices(fin, dedup)
+        attach_poi(fin, dedup)
 
     return dedup
+
+
+def attach_poi(fin, rows):
+    """단지 반경 실측 학군·인프라 POI 부착 (poi.py)."""
+    from .poi import PoiCollector
+    coords = {a["complex_no"]: (a["lat"], a["lng"])
+              for a in rows if a.get("lat") and a.get("lng")}
+    print(f"5) 학군·인프라 POI 수집 (단지 {len(coords)}곳) …", flush=True)
+    col = PoiCollector(fin, DATA / "parks.json")
+    results, fails = {}, 0
+    for j, (cno, (lat, lng)) in enumerate(coords.items(), 1):
+        try:
+            results[cno] = col.collect(cno, lat, lng)
+        except Exception as e:
+            fails += 1
+            if fails <= 3:
+                print(f"   ! POI {cno}: {e}", file=sys.stderr, flush=True)
+        if j % 100 == 0:
+            print(f"   … {j}/{len(coords)}", flush=True)
+            fin.detail_cache.save()
+    if fails:
+        print(f"   ! POI 실패 {fails}곳 — 해당 단지는 시군구 폴백 점수 사용", flush=True)
+    for a in rows:
+        a["poi"] = results.get(a["complex_no"])
+
+
+def attach_real_prices(fin, rows):
+    """평형 매칭 후 최근 실거래 3건 부착 + 호가-실거래 갭 계산.
+
+    평형 매칭: 단지 평형 목록에서 전용면적이 가장 가까운 것(오차 ≤1.5㎡).
+    """
+    pairs = sorted({(a["complex_no"], a["trade_type"]) for a in rows if a["complex_no"]})
+    uniq_cplx = sorted({p[0] for p in pairs})
+    print(f"4) 실거래가 조회 (단지 {len(uniq_cplx)}곳) …", flush=True)
+    pyeongs = {}
+    for j, cno in enumerate(uniq_cplx, 1):
+        try:
+            pyeongs[cno] = fin.pyeong_types(cno)
+        except Exception as e:
+            print(f"   ! 평형 {cno}: {e}", file=sys.stderr, flush=True)
+        if j % 150 == 0:
+            print(f"   … 평형 {j}/{len(uniq_cplx)}", flush=True)
+            fin.detail_cache.save()
+
+    def match_pyeong(cno, m2):
+        best, bd = None, 1.5
+        for t in pyeongs.get(cno, []):
+            if t.get("exclusive") is None:
+                continue
+            d = abs(t["exclusive"] - m2)
+            if d <= bd:
+                bd, best = d, t
+        return best
+
+    done = 0
+    fetched = set()
+    for a in rows:
+        t = match_pyeong(a["complex_no"], a.get("exclusive_m2") or 0)
+        a["pyeong_name"] = t["name"] if t else None
+        a["pyeong_households"] = t["households"] if t else None
+        a["real_prices"] = []
+        a["real_gap_pct"] = None
+        if not t:
+            continue
+        try:
+            rp = fin.real_prices(a["complex_no"], t["number"], a["trade_type"])
+        except Exception as e:
+            fkey = (a["complex_no"], t["number"], a["trade_type"])
+            if fkey not in fetched:
+                print(f"   ! 실거래 {a['complex_name']}: {e}", file=sys.stderr, flush=True)
+            continue
+        finally:
+            fetched.add((a["complex_no"], t["number"], a["trade_type"]))
+            done += 1
+            if done % 300 == 0:
+                print(f"   … 실거래 {done}건 매칭", flush=True)
+                fin.realprice_cache.save()
+        a["real_prices"] = rp
+        if rp and a["trade_type"] == "A1" and rp[0].get("deal"):
+            a["real_gap_pct"] = round((a["deal_price"] - rp[0]["deal"]) / rp[0]["deal"] * 100, 1)
 
 
 def group_same_units(rows):
@@ -276,10 +362,10 @@ def attach_stations(rows):
 
 
 def enrich_and_score(cfg, rows):
-    print("4) 최기역 계산 …", flush=True)
+    print("6) 최기역 계산 …", flush=True)
     attach_stations(rows)
 
-    print("5) 경사도(언덕) 계산 …", flush=True)
+    print("7) 경사도(언덕) 계산 …", flush=True)
     elev = ElevationClient(DATA / "cache" / "elevation.json")
     cplx_coords = {a["complex_no"]: (a["lat"], a["lng"])
                    for a in rows if a.get("lat") and a.get("lng")}
@@ -289,7 +375,7 @@ def enrich_and_score(cfg, rows):
         a["grade_pct"] = info["grade_pct"] if info else None
         a["slope_label"] = score.slope_label(a["grade_pct"])
 
-    print("6) 평점 계산 …", flush=True)
+    print("8) 평점 계산 …", flush=True)
     score.score_articles(rows, cfg["score_weights"], cfg["transit_hubs"])
     rows.sort(key=lambda a: -a["score_total"])
     return rows
@@ -315,7 +401,7 @@ def main():
         {"generated_at": time.strftime("%Y-%m-%d %H:%M"), "listings": rows},
         ensure_ascii=False), encoding="utf-8")
 
-    print("7) 대시보드 생성 …", flush=True)
+    print("9) 대시보드 생성 …", flush=True)
     out = ROOT / cfg["web"]["output_html"]
     webgen.render(rows, cfg, out)
     n_rent = sum(1 for a in rows if a["trade_type"] == "B2")
