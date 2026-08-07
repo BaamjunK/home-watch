@@ -40,7 +40,7 @@
     "mland_interval_sec": 1.0,
     "finland_interval_sec": 0.6,
     "meta_cache_days": 7,
-    "article_cache_hours": 3,
+    "article_cache_hours": 1.5,
     "max_article_pages": 20
   },
   "web": {
