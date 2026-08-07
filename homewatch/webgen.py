@@ -87,6 +87,7 @@ tbody tr.row:hover { background:var(--accent-soft); }
 .tag { display:inline-block; padding:1px 7px; border-radius:6px; font-size:11px; font-weight:600;
   margin-left:4px; vertical-align:1px; }
 .tag.lease { background:var(--warn-soft); color:var(--warn); }
+.tag.good { background:rgba(5,150,105,.12); color:var(--good); }
 .tag.gap { background:var(--accent-soft); color:var(--accent); }
 .tag.jgc { background:var(--line); color:var(--sub); }
 .tag.dup { background:var(--line); color:var(--sub); }
@@ -148,7 +149,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <b>규모·연식</b> — 세대수 60%(300세대 5점~3,000세대+ 10점) + 연식 40%(≤5년 10점→35년+ 3점, 재건축 +1 보정).<br>
       <b>언덕</b> — 단지 중심 5×5 그리드(240m) 고도 평면 피팅 구배%. 위성 DEM 2종(SRTM 2000 / Copernicus 2011~15)의 최솟값 — 옛 지형·건물반영 과대오류 상쇄. &lt;1.5% 평지 10점 ~ 8%+ 급경사 1점.<br><br>
       <b>기타 표기</b> — 실거래: 네이버 공개 실거래(신고 기준, 반영 지연 있음), 같은 평형(전용면적 최근접 매칭) 최근 3건.
-      전세가율·갭: 단지 전세 호가 범위 기준(실거래 아님). 세안고: 매물 설명 키워드 감지. 임대세대: 단지 등록 정보.
+      전세가율·갭: 단지 전세 호가 범위 기준(실거래 아님). 저층 할인율: 1~3층 매물의 호가를 같은 평형 <b>일반층(4층~) 실거래 평균</b>과 비교 — 저층은 채광·소음 탓에 통상 10% 이상 싸므로 그에 못 미치면 '할인부족'으로 표시. 세안고: 매물 설명 키워드 감지. 임대세대: 단지 등록 정보.
       부분임대(세대분리 원룸) 매물은 키워드+가격 정합성 검사로 자동 제외.
     </div>
   </div>
@@ -181,6 +182,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     </div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
+    <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
     <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
   </div>
   <div class="count" id="count"></div>
@@ -189,7 +191,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <th data-k="score_total">평점 <span class="arrow"></span></th>
       <th data-k="complex_name">단지 <span class="arrow"></span></th>
       <th data-k="_price">호가 <span class="arrow"></span></th>
-      <th data-k="real_gap_pct" class="hide-m">실거래比 <span class="arrow"></span></th>
+      <th data-k="real_gap_pct" class="hide-m">실거래 대비 <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -326,6 +328,7 @@ function filtered(){
   const scMin = parseFloat(document.getElementById("fScore").value);
   const slopeMax = parseFloat(document.getElementById("fSlope").value);
   const noLease = document.getElementById("fNoLease").checked;
+  const lowOk = document.getElementById("fLowOk").checked;
   const noGap = document.getElementById("fNoGap").checked;
   return DATA.filter(a => {
     if (a.trade_type !== trade) return false;
@@ -341,6 +344,7 @@ function filtered(){
     if (!isNaN(slopeMax) && !(a.grade_pct != null && a.grade_pct < slopeMax)) return false;
     if (!isNaN(scMin) && a.score_total < scMin) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
+    if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
     return true;
   });
@@ -352,6 +356,9 @@ function tags(a){
   if ((a.lease_ratio||0) >= 10) t += '<span class="tag lease">임대 '+a.lease_ratio+'%</span>';
   if (a.gap_sale) t += '<span class="tag gap">세안고</span>';
   if (a.dup_count) t += '<span class="tag dup">동일 +'+a.dup_count+'</span>';
+  if (a.low_floor) t += a.low_floor.fair
+    ? '<span class="tag good">저층 -'+a.low_floor.discount_pct+'%</span>'
+    : '<span class="tag lease">저층 할인부족 '+(a.low_floor.discount_pct>0?"-":"+")+Math.abs(a.low_floor.discount_pct)+'%</span>';
   return t;
 }
 
@@ -447,6 +454,10 @@ function toggleDetail(tr, a){
     fact("일반층 4층~", rpHigh) +
     (vol ? fact("2021년 거래량", vol.count + "건 · 월 " + vol.per_month + "건",
                 vol.per_month >= 1 ? "good" : (vol.count === 0 ? "warn" : "")) : "") +
+    (a.low_floor ? fact("저층 할인율",
+        (a.low_floor.discount_pct >= 0 ? "-" : "+") + Math.abs(a.low_floor.discount_pct) + "% (일반층 실거래 평균 대비)"
+        + (a.low_floor.fair ? " · 적정" : " · 10% 미만"),
+        a.low_floor.fair ? "good" : "warn") : "") +
     (a.trade_type==="A1" && a.real_gap_pct != null
       ? fact("실거래 대비 호가", (a.real_gap_pct>0?"+":"")+a.real_gap_pct+"%",
              a.real_gap_pct <= 0 ? "good" : (a.real_gap_pct >= 10 ? "warn" : "")) : "") +
@@ -560,7 +571,7 @@ def render(rows, cfg, out_path: Path):
             "coverage_ratio", "construction_company", "highest_floor",
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
             "station_name", "station_m", "station_walk_min",
-            "real_prices", "real_summary", "vol_2021", "real_gap_pct", "jeonse_min", "jeonse_max",
+            "real_prices", "real_summary", "vol_2021", "low_floor", "real_gap_pct", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])

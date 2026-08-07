@@ -193,6 +193,72 @@ def attach_poi(fin, rows):
 LOW_FLOOR_MAX = 3          # 1~3층을 저층으로 본다
 RECENT_MONTHS = 6          # 실거래 평균 기본 기간 (부족하면 12개월로 확대)
 VOLUME_YEAR = "2021"       # 거래 활발도 비교 기준 연도 (직전 상승장)
+LOW_FLOOR_FAIR_DISCOUNT = 10.0   # 저층이면 최소 이만큼(%)은 싸야 값을 한다
+
+
+def parse_floor(floor_info):
+    """'1/15' → 1, '저/15' → 'LOW', '고/14' → 'HIGH'. 판별 불가면 None."""
+    if not floor_info:
+        return None
+    head = str(floor_info).split("/")[0].strip()
+    if head.isdigit():
+        return int(head)
+    return {"저": "LOW", "중": "MID", "고": "HIGH"}.get(head)
+
+
+def is_low_floor(article):
+    fl = parse_floor(article.get("floor_info"))
+    return (isinstance(fl, int) and fl <= LOW_FLOOR_MAX) or fl == "LOW"
+
+
+def attach_low_floor(rows):
+    """저층 매물의 호가가 충분히 싼지 판정 (in-place, a["low_floor"]).
+
+    기준선은 **같은 단지·평형의 일반층(4층~) 호가 중앙값**이다. 호가는 실거래
+    보다 중앙값 +8% 높아, 실거래 평균을 기준으로 삼으면 거의 모든 저층이
+    "할인 부족"으로 나와 판정이 무의미해진다(호가끼리 비교해야 사과 대 사과).
+    같은 단지에 일반층 매물이 없으면 일반층 실거래 평균으로 폴백하되,
+    단지별 호가 프리미엄(호가÷실거래)을 곱해 시점 차이를 보정한다.
+    """
+    from statistics import median
+
+    def key(a):
+        return (a["complex_no"], a["trade_type"], round(a.get("exclusive_m2") or 0))
+
+    # 일반층 호가 중앙값
+    high_ask = {}
+    for a in rows:
+        if not is_low_floor(a) and a.get("exclusive_m2"):
+            high_ask.setdefault(key(a), []).append(score.effective_price(a))
+    high_ask = {k: median(v) for k, v in high_ask.items() if v}
+
+    # 단지별 호가 프리미엄 (실거래 폴백 보정용)
+    prem = {}
+    for a in rows:
+        rs = a.get("real_summary") or {}
+        base = (rs.get("all") or {}).get("eff")
+        if base and not is_low_floor(a):
+            prem.setdefault(a["complex_no"], []).append(score.effective_price(a) / base)
+    prem = {k: median(v) for k, v in prem.items() if v}
+
+    for a in rows:
+        a["low_floor"] = None
+        if not is_low_floor(a) or not a.get("exclusive_m2"):
+            continue
+        asking = score.effective_price(a)
+        if not asking:
+            continue
+        base, basis = high_ask.get(key(a)), "일반층 호가"
+        if not base:
+            rs = a.get("real_summary") or {}
+            rp_base = (rs.get("high") or rs.get("all") or {}).get("eff")
+            if not rp_base:
+                continue
+            base = rp_base * prem.get(a["complex_no"], 1.08)  # 전체 중앙 프리미엄
+            basis = "일반층 실거래(호가 보정)"
+        discount = round((base - asking) / base * 100, 1)
+        a["low_floor"] = {"discount_pct": discount, "basis": basis,
+                          "fair": discount >= LOW_FLOOR_FAIR_DISCOUNT}
 
 
 def summarize_real_prices(rows, trade_type):
@@ -217,10 +283,17 @@ def summarize_real_prices(rows, trade_type):
     def price(r):
         return r["deal"] if trade_type == "A1" else r["deposit"]
 
+    def eff(r):
+        """저층 할인율 비교용 환산가 — 월세는 보증금+월세×12/전환율."""
+        if trade_type == "A1":
+            return r["deal"]
+        return r["deposit"] + r["rent"] * 12 / score.RENT_CONVERT_RATE
+
     def agg(subset):
         if not subset:
             return None
         return {"avg": round(sum(price(r) for r in subset) / len(subset)),
+                "eff": round(sum(eff(r) for r in subset) / len(subset)),
                 "count": len(subset),
                 "rent_avg": (round(sum(r["rent"] for r in subset) / len(subset))
                              if trade_type == "B2" else 0)}
@@ -410,6 +483,8 @@ def attach_stations(rows):
 
 
 def enrich_and_score(cfg, rows):
+    attach_low_floor(rows)
+
     print("6) 최기역 계산 …", flush=True)
     attach_stations(rows)
 
