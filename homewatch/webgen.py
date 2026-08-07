@@ -97,6 +97,15 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 .bar .t { display:flex; justify-content:space-between; color:var(--sub); }
 .bar .g { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:3px; }
 .bar .g i { display:block; height:100%; background:var(--accent); border-radius:3px; }
+.hbtn { border:1px solid var(--line); background:var(--card); color:var(--sub); cursor:pointer;
+  width:15px; height:15px; line-height:1; border-radius:50%; font-size:10px; padding:0;
+  vertical-align:1px; font-weight:700; }
+.hbtn:hover { border-color:var(--accent); color:var(--accent); }
+.help { display:none; margin-top:6px; padding:8px 10px; background:var(--card);
+  border:1px solid var(--line); border-radius:8px; font-size:11.5px; line-height:1.6; color:var(--sub); }
+.help.open { display:block; }
+.help b { color:var(--ink); }
+.help .hw { color:var(--warn); }
 .facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:6px 18px;
   margin:10px 0; padding:10px 12px; background:var(--card); border:1px solid var(--line); border-radius:10px; }
 .fact { font-size:12px; }
@@ -196,6 +205,15 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 const DATA = __DATA__;
 const DEFAULT_WEIGHTS = __WEIGHTS_JSON__;
 const SCORE_LABELS = {value:"가격가치", transit:"교통", school:"학군", infra:"인프라", scale_age:"규모·연식", slope:"언덕"};
+// 항목별 산정 방식 — 점수 바의 ? 아이콘에 붙는다
+const SCORE_HELP = {
+  value: "같은 시군구·거래유형·면적밴드(59~85 / 85㎡+) 매물들의 <b>중위 평당가 대비 할인율</b>. 월세는 보증금+월세×12÷5.5%(전월세전환율)로 환산해 비교합니다. 중위가보다 30% 싸면 10점, 같으면 5점, 30% 비싸면 0점. 표본 5건 미만이면 시·도 전체로 폴백.",
+  transit: "<b>업무지구 70%</b>: 판교·강남·여의도·시청까지 직선거리, 각 3km 이내 10점 → 25km 0점 선형, 4곳 평균.<br><b>역세권 30%</b>: 최기역 도보 5분 이하 10점 → 25분 0점. 역 좌표는 OSM 수도권 508개 역, 도보시간 = 직선거리×1.35(경로 보정) ÷ 67m/분.<br><span class='hw'>실제 대중교통 소요시간(환승·배차)이 아닌 거리 근사입니다.</span>",
+  school: "<b>단지 반경 실측</b> — 학원 밀집 35%(1km 내 학원 수, 500m 학원가 가점) + 배정 중학교 과밀도 25%(학급당 학생수÷시 평균, 학군 선호지는 전입 수요로 과밀) + 초품아 25%(초등학교 거리, 200m 이내 만점) + 명문·특목고 근접 15%(2km 내 외고·과학고·국제고·주요 자사고).<br><span class='hw'>특목고 진학률 원본(학교알리미)은 대량 수집이 불가능해, 진학 성과와 상관이 높은 지표로 대체한 추정치입니다.</span>",
+  infra: "<b>단지 반경 실측</b>(각 20%) — 백화점 거리 · 대형마트 1km 개수/거리 · 병원 1km 개수 · 생활편의(편의점 500m + 약국 1km) · 공원 거리(OSM 수도권 5,591곳).<br>POI 수집에 실패한 단지만 시군구 평균 점수로 폴백합니다.",
+  scale_age: "세대수 60%(300세대 5점 → 3,000세대 이상 10점 구간별) + 연식 40%(5년 이하 10점 → 35년 이상 3점). 재건축 단지는 개발 잠재가치로 +1 보정.",
+  slope: "단지 중심 5×5 그리드(240m 범위) 고도에 최소제곱 평면을 피팅한 구배%. 위성 DEM 2종(SRTM 2000년 / Copernicus 2011~15년)에서 각각 구한 뒤 <b>최솟값</b>을 씁니다 — 각각 옛 지형·건물 높이 반영이라는 과대측정 오류가 있어 min이 실지형에 가깝습니다.<br>1.5% 미만 평지 10점 · 3% 완만 8점 · 5% 약한 언덕 6점 · 8% 언덕 3점 · 그 이상 급경사 1점.",
+};
 const PY = 3.3058, RATE = 0.055;
 let WEIGHTS = loadWeights();
 let trade = "B2", sortKey = "score_total", sortAsc = false, openRow = null;
@@ -380,6 +398,12 @@ function render(){
   }
 }
 
+function toggleHelp(e, k){
+  e.stopPropagation();          // 행 클릭(상세 접기)으로 번지지 않게
+  const el = document.getElementById("help-"+k);
+  if (el) el.classList.toggle("open");
+}
+
 function fact(k, v, cls){
   if (v === null || v === undefined || v === "") return "";
   return '<div class="fact'+(cls?' '+cls:'')+'"><span class="k">'+k+'</span><b>'+v+'</b></div>';
@@ -392,8 +416,11 @@ function toggleDetail(tr, a){
   let bars = "";
   for (const k in SCORE_LABELS) {
     const v = a.scores[k];
-    bars += '<div class="bar"><div class="t"><span>'+SCORE_LABELS[k]+' <span style="opacity:.6">×'+(WEIGHTS[k]||0)+'</span></span><b>'+(v==null?"-":v.toFixed(1))+'</b></div>' +
-            '<div class="g"><i style="width:'+(v==null?0:v*10)+'%"></i></div></div>';
+    bars += '<div class="bar"><div class="t"><span>'+SCORE_LABELS[k] +
+            ' <button class="hbtn" onclick="toggleHelp(event,\''+k+'\')" title="산정 방식">?</button>' +
+            ' <span style="opacity:.6">×'+(WEIGHTS[k]||0)+'</span></span><b>'+(v==null?"-":v.toFixed(1))+'</b></div>' +
+            '<div class="g"><i style="width:'+(v==null?0:v*10)+'%"></i></div>' +
+            '<div class="help" id="help-'+k+'">'+SCORE_HELP[k]+'</div></div>';
   }
   // 실거래 이력
   let rpHist = "";
