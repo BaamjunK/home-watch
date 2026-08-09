@@ -13,6 +13,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <title>__TITLE__</title>
 <style>
 :root {
@@ -218,7 +219,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <div class="f" id="fDealBox" style="display:none"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="13"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
     <div class="f"><label>세대수 최소</label><input type="number" id="fHh" placeholder="300"></div>
-    <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" value="15" placeholder="∞"></div>
+    <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" placeholder="∞"></div>
     <div class="f"><label>용적률 최대(%)</label><input type="number" id="fFar" step="10" value="350" placeholder="∞"></div>
     <div class="f"><label>재건축</label>
       <select id="fJgc">
@@ -247,7 +248,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <select id="mSort" class="msort" onchange="applyMobileSort(this.value)"></select>
   </div>
   <div class="count" id="count"></div>
-  <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건 · 역도보 ≤15분
+  <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건
     <button class="wreset" style="margin-left:8px" onclick="clearDefaults()">기본 필터 해제</button></div>
   <table>
     <thead><tr>
@@ -449,7 +450,7 @@ function filtered(){
 }
 
 function clearDefaults(){
-  ["fWalk","fFar","fVol"].forEach(id => document.getElementById(id).value = "");
+  ["fFar","fVol"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("defnote").style.display = "none";
   render();
 }
