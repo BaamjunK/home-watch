@@ -118,13 +118,55 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 .vars .v { font-size:12px; color:var(--sub); padding:3px 0; }
 .vars .v a { color:var(--accent); }
 .empty { text-align:center; padding:50px 0; color:var(--sub); }
-@media (max-width:760px){ .hide-m{display:none;} .wrap{padding:12px 8px 40px;} }
+.mobar { display:none; gap:8px; margin:10px 0 4px; }
+.msort { flex:1; padding:9px 10px; border:1px solid var(--line); border-radius:10px;
+  background:var(--card); color:var(--ink); font-size:14px; }
+@media (max-width:900px){
+  .wrap { padding:12px 10px 40px; }
+  h1 { font-size:18px; }
+  .tabs { flex-wrap:wrap; gap:6px; }
+  .tab { flex:1 1 auto; padding:9px 12px; text-align:center; }
+  .wbtn { margin-left:0 !important; flex:1 1 auto; white-space:nowrap; padding:9px 10px; font-size:12.5px; }
+  #grpBtn { margin-left:0 !important; }
+  .mobar { display:flex; }
+  .mbtn { flex:0 0 auto; }
+  /* 필터는 기본 접힘 — ⚙︎ 필터 버튼으로 펼친다 */
+  .filters { display:none; }
+  .filters.open { display:flex; }
+  .f, .f input, .f select, .f .msbtn { min-width:0; }
+  .f { flex:1 1 44%; }
+  .f input[type=number] { width:100%; }
+  .f.chk { flex:1 1 100%; }
+  /* 표 → 카드 */
+  table { border:none; background:transparent; }
+  thead { display:none; }
+  tbody, tbody tr, tbody td { display:block; }
+  tbody tr.row { background:var(--card); border:1px solid var(--line); border-radius:12px;
+    margin-bottom:8px; padding:10px 12px; position:relative; }
+  tbody tr.row td { border:none; padding:0; }
+  tbody tr.row td:nth-child(1) { position:absolute; right:10px; top:10px; }
+  tbody tr.row td:nth-child(2) { padding-right:74px; }
+  tbody tr.row td:nth-child(3) { margin-top:6px; font-size:15px; }
+  tbody tr.row td:nth-child(6) { display:inline-block; margin:4px 10px 0 0; font-size:12.5px; }
+  tbody tr.row td:nth-child(10),
+  tbody tr.row td:nth-child(11) { display:inline-block; font-size:12px; margin:4px 10px 0 0; }
+  .hide-m { display:inline-block !important; font-size:11px; color:var(--sub); margin:4px 10px 0 0; }
+  .hide-m::before { content:attr(data-l); color:var(--sub); opacity:.75; margin-right:3px; }
+  .hide-m:empty { display:none !important; }
+  tbody tr.sub-row { margin-left:10px; }
+  tbody tr.sub-row td:first-child { padding-left:0; }
+  tr.detail { display:block; }
+  tr.detail td { display:block; padding:12px; border-radius:12px; }
+  .bars { grid-template-columns:1fr 1fr; gap:8px 12px; }
+  .facts { grid-template-columns:1fr 1fr; }
+  .links a { display:block; text-align:center; margin:6px 0 0; }
+}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>아파트 매물 대시보드</h1>
-  <div class="meta">생성: 2026-08-09 11:14 · 데이터: 네이버 부동산 (동일매물 묶음·실거래 포함) · 교통=업무지구 70%+역세권 30%</div>
+  <div class="meta">생성: 2026-08-09 11:24 · 데이터: 네이버 부동산 (동일매물 묶음·실거래 포함) · 교통=업무지구 70%+역세권 30%</div>
   <div class="tabs">
     <button class="tab on" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
     <button class="tab" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
@@ -189,6 +231,10 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
     <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
+  </div>
+  <div class="mobar">
+    <button class="wbtn mbtn" onclick="document.querySelector('.filters').classList.toggle('open')">⚙︎ 필터</button>
+    <select id="mSort" class="msort" onchange="applyMobileSort(this.value)"></select>
   </div>
   <div class="count" id="count"></div>
   <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건 · 역도보 ≤15분
@@ -322,6 +368,19 @@ function setTrade(t){ trade = t; openRow = null; expandedKey = null;
   document.getElementById("fNoGapBox").style.display = t==="A1" ? "" : "none";
   render(); }
 
+const SORT_OPTS = [["score_total","평점 높은순",false],["_price","가격 낮은순",true],
+  ["_price","가격 높은순",false],["_ppp","평당가 낮은순",true],["real_gap_pct","저평가순",true],
+  ["_vol21","거래 활발순",false],["station_walk_min","역 가까운순",true],
+  ["grade_pct","평지순",true],["exclusive_m2","면적 넓은순",false],["use_date","신축순",false],
+  ["households","대단지순",false]];
+function buildMobileSort(){
+  const sel = document.getElementById("mSort");
+  sel.innerHTML = SORT_OPTS.map((o,i) => '<option value="'+i+'">'+o[1]+'</option>').join("");
+}
+function applyMobileSort(i){
+  const o = SORT_OPTS[i]; sortKey = o[0]; sortAsc = o[2]; expandedKey = null; render();
+}
+
 function toggleGroup(){
   byComplex = !byComplex; expandedKey = null; openRow = null;
   document.getElementById("grpBtn").textContent = byComplex ? "🏢 단지별 묶기" : "📋 매물별 보기";
@@ -417,13 +476,13 @@ function articleRow(a, indent){
           + '<div class="sub">'+a.sigu+' '+a.dong+(a.bld_dong?' · '+a.bld_dong+'동':'')+(a.floor_info?' · '+a.floor_info+'층':'')+'</div>')
       + '</td>' +
     '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
-    '<td class="hide-m">'+gapCell(a)+'</td>' +
-    '<td class="hide-m">'+volCell(a)+'</td>' +
-    '<td>'+(a.exclusive_m2||"-")+'㎡</td>' +
-    '<td class="hide-m">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
-    '<td class="hide-m">'+(indent ? "" : (a.households||"-"))+'</td>' +
-    '<td class="hide-m">'+(indent ? "" : ageText(a.use_date))+'</td>' +
-    '<td>'+(indent ? "" : stationText(a))+'</td>' +
+    '<td class="hide-m" data-l="실거래대비">'+gapCell(a)+'</td>' +
+    '<td class="hide-m" data-l="21년">'+volCell(a)+'</td>' +
+    '<td data-l="전용">'+(a.exclusive_m2||"-")+'㎡</td>' +
+    '<td class="hide-m" data-l="평당">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
+    '<td class="hide-m" data-l="세대">'+(indent ? "" : (a.households||"-"))+'</td>' +
+    '<td class="hide-m" data-l="연식">'+(indent ? "" : ageText(a.use_date))+'</td>' +
+    '<td data-l="역">'+(indent ? "" : stationText(a))+'</td>' +
     '<td class="'+slopeCls(a.grade_pct)+'">'+(indent ? "" : (a.slope_label||"미상"))+'</td>';
   tr.onclick = (e) => { e.stopPropagation(); toggleDetail(tr, a); };
   return tr;
@@ -480,13 +539,13 @@ function groupRow(g){
        ' <span class="tag dup">'+g.count+'건</span>'+tags(a).replace(/<span class="tag dup">[^<]*<\/span>/,"")+'</div>' +
       '<div class="sub">'+a.sigu+' '+a.dong+'</div></td>' +
     '<td class="price">'+priceRange+rpText(a)+'</td>' +
-    '<td class="hide-m">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
-    '<td class="hide-m">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
-    '<td>'+areaRange+'</td>' +
-    '<td class="hide-m">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
-    '<td class="hide-m">'+(a.households||"-")+'</td>' +
-    '<td class="hide-m">'+ageText(a.use_date)+'</td>' +
-    '<td>'+stationText(a)+'</td>' +
+    '<td class="hide-m" data-l="실거래대비">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
+    '<td class="hide-m" data-l="21년">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
+    '<td data-l="전용">'+areaRange+'</td>' +
+    '<td class="hide-m" data-l="평당">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
+    '<td class="hide-m" data-l="세대">'+(a.households||"-")+'</td>' +
+    '<td class="hide-m" data-l="연식">'+ageText(a.use_date)+'</td>' +
+    '<td data-l="역">'+stationText(a)+'</td>' +
     '<td class="'+slopeCls(a.grade_pct)+'">'+(a.slope_label||"미상")+'</td>';
   tr.onclick = () => {
     expandedKey = (expandedKey === g.key) ? null : g.key;
@@ -683,6 +742,7 @@ function toggleDetail(tr, a){
     render();
   }));
   buildWeightPanel();
+  buildMobileSort();
   recompute();
   render();
 })();
