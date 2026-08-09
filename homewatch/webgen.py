@@ -169,8 +169,8 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <div class="f" id="fDealBox" style="display:none"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="13"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
     <div class="f"><label>세대수 최소</label><input type="number" id="fHh" placeholder="300"></div>
-    <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" placeholder="∞"></div>
-    <div class="f"><label>용적률 최대(%)</label><input type="number" id="fFar" step="10" placeholder="∞"></div>
+    <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" value="15" placeholder="∞"></div>
+    <div class="f"><label>용적률 최대(%)</label><input type="number" id="fFar" step="10" value="350" placeholder="∞"></div>
     <div class="f"><label>경사(언덕)</label>
       <select id="fSlope">
         <option value="">전체</option>
@@ -180,13 +180,15 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
         <option value="8">언덕까지 (&lt;8%)</option>
       </select>
     </div>
-    <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" placeholder="0"></div>
+    <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" value="1" placeholder="0"></div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
     <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
   </div>
   <div class="count" id="count"></div>
+  <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건 · 역도보 ≤15분
+    <button class="wreset" style="margin-left:8px" onclick="clearDefaults()">기본 필터 해제</button></div>
   <table>
     <thead><tr>
       <th data-k="score_total">평점 <span class="arrow"></span></th>
@@ -359,6 +361,12 @@ function filtered(){
     if (noGap && a.gap_sale) return false;
     return true;
   });
+}
+
+function clearDefaults(){
+  ["fWalk","fFar","fVol"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("defnote").style.display = "none";
+  render();
 }
 
 function tags(a){
