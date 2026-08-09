@@ -26,7 +26,8 @@ h1 { font-size:20px; margin:0 0 2px; }
 .tab { flex:0 0 auto; padding:8px 22px; border-radius:10px; border:1px solid var(--line);
   background:var(--card); cursor:pointer; font-weight:600; font-size:14px; color:var(--sub); }
 .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-.wbtn { margin-left:auto; padding:8px 14px; border-radius:10px; border:1px solid var(--line);
+#grpBtn { margin-left:auto; }
+.wbtn { padding:8px 14px; border-radius:10px; border:1px solid var(--line);
   background:var(--card); cursor:pointer; font-size:13px; color:var(--ink); }
 .wpanel { display:none; padding:12px; background:var(--card); border:1px solid var(--line);
   border-radius:12px; margin-bottom:12px; }
@@ -81,6 +82,11 @@ tbody tr.row:hover { background:var(--accent-soft); }
 .tag.gap { background:var(--accent-soft); color:var(--accent); }
 .tag.jgc { background:var(--line); color:var(--sub); }
 .tag.dup { background:var(--line); color:var(--sub); }
+tbody tr.grp { background:var(--card); }
+tbody tr.grp.open { background:var(--accent-soft); }
+tbody tr.grp .caret { color:var(--sub); font-size:11px; }
+tbody tr.sub-row td:first-child { padding-left:26px; }
+tbody tr.sub-row { background:var(--bg); }
 .slope-flat{color:var(--b);} .slope-hill{color:var(--c);} .slope-steep{color:#dc2626;}
 tr.detail td { background:var(--bg); padding:14px 16px; }
 .bars { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px 20px; margin:6px 0 12px; }
@@ -118,11 +124,12 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 <body>
 <div class="wrap">
   <h1>아파트 매물 대시보드</h1>
-  <div class="meta">생성: 2026-08-09 10:57 · 데이터: 네이버 부동산 (동일매물 묶음·실거래 포함) · 교통=업무지구 70%+역세권 30%</div>
+  <div class="meta">생성: 2026-08-09 11:10 · 데이터: 네이버 부동산 (동일매물 묶음·실거래 포함) · 교통=업무지구 70%+역세권 30%</div>
   <div class="tabs">
     <button class="tab on" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
     <button class="tab" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
-    <button class="wbtn" onclick="document.getElementById('wpanel').classList.toggle('open')">⚖️ 가중치 조정 <span id="wsum"></span></button>
+    <button class="wbtn" id="grpBtn" onclick="toggleGroup()">🏢 단지별 묶기</button>
+    <button class="wbtn" style="margin-left:8px" onclick="document.getElementById('wpanel').classList.toggle('open')">⚖️ 가중치 조정 <span id="wsum"></span></button>
     <button class="wbtn" style="margin-left:8px" onclick="document.getElementById('mpanel').classList.toggle('open')">📐 산정 방식</button>
   </div>
   <div class="wpanel" id="mpanel">
@@ -220,6 +227,7 @@ const SCORE_HELP = {
 const PY = 3.3058, RATE = 0.055;
 let WEIGHTS = loadWeights();
 let trade = "B2", sortKey = "score_total", sortAsc = false, openRow = null;
+let byComplex = true, expandedKey = null;
 let selectedSigu = new Set();
 
 DATA.forEach(a => {
@@ -305,7 +313,7 @@ function ageText(d){ if(!d) return "-"; const y = new Date().getFullYear() - par
 function stationText(a){ if(!a.station_name) return "-";
   return a.station_name + " <span class='sub'>" + a.station_walk_min + "분</span>"; }
 
-function setTrade(t){ trade = t; openRow = null;
+function setTrade(t){ trade = t; openRow = null; expandedKey = null;
   document.querySelectorAll(".tab").forEach(el => el.classList.toggle("on", el.dataset.trade===t));
   document.getElementById("fRentBox").style.display = t==="B2" ? "" : "none";
   document.getElementById("fWarBox").style.display = t==="B2" ? "" : "none";
@@ -313,6 +321,12 @@ function setTrade(t){ trade = t; openRow = null;
   document.getElementById("fDealMinBox").style.display = t==="A1" ? "" : "none";
   document.getElementById("fNoGapBox").style.display = t==="A1" ? "" : "none";
   render(); }
+
+function toggleGroup(){
+  byComplex = !byComplex; expandedKey = null; openRow = null;
+  document.getElementById("grpBtn").textContent = byComplex ? "🏢 단지별 묶기" : "📋 매물별 보기";
+  render();
+}
 
 function toggleMs(e){ e.stopPropagation();
   document.getElementById("msPanel").classList.toggle("open"); }
@@ -383,41 +397,128 @@ function tags(a){
   return t;
 }
 
+function sortVals(x, y){
+  let a = x[sortKey], b = y[sortKey];
+  if (a==null) a = sortAsc ? Infinity : -Infinity;
+  if (b==null) b = sortAsc ? Infinity : -Infinity;
+  if (typeof a === "string") return sortAsc ? a.localeCompare(b) : b.localeCompare(a);
+  return sortAsc ? a-b : b-a;
+}
+
+function articleRow(a, indent){
+  const tr = document.createElement("tr");
+  tr.className = "row" + (indent ? " sub-row" : "");
+  tr.innerHTML =
+    '<td><span class="badge '+a.grade+'">'+a.grade+'</span> <b>'+a.score_total.toFixed(1)+'</b></td>' +
+    '<td>' + (indent
+        ? '<div class="cname">'+(a.bld_dong?a.bld_dong+'동 ':'')+(a.floor_info?a.floor_info+'층':'')+tags(a)+'</div>'
+          + '<div class="sub">'+(a.pyeong_name?a.pyeong_name+'타입 · ':'')+(a.realtor||'')+'</div>'
+        : '<div class="cname">'+a.complex_name+tags(a)+'</div>'
+          + '<div class="sub">'+a.sigu+' '+a.dong+(a.bld_dong?' · '+a.bld_dong+'동':'')+(a.floor_info?' · '+a.floor_info+'층':'')+'</div>')
+      + '</td>' +
+    '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
+    '<td class="hide-m">'+gapCell(a)+'</td>' +
+    '<td class="hide-m">'+volCell(a)+'</td>' +
+    '<td>'+(a.exclusive_m2||"-")+'㎡</td>' +
+    '<td class="hide-m">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
+    '<td class="hide-m">'+(indent ? "" : (a.households||"-"))+'</td>' +
+    '<td class="hide-m">'+(indent ? "" : ageText(a.use_date))+'</td>' +
+    '<td>'+(indent ? "" : stationText(a))+'</td>' +
+    '<td class="'+slopeCls(a.grade_pct)+'">'+(indent ? "" : (a.slope_label||"미상"))+'</td>';
+  tr.onclick = (e) => { e.stopPropagation(); toggleDetail(tr, a); };
+  return tr;
+}
+
+function groupByComplex(rows){
+  const map = new Map();
+  rows.forEach(a => {
+    const k = a.complex_no + ":" + a.trade_type;
+    if (!map.has(k)) map.set(k, {key: k, items: [], head: a});
+    const g = map.get(k);
+    g.items.push(a);
+    if (a.score_total > g.head.score_total) g.head = a;   // 최고 점수 매물이 대표
+  });
+  const groups = [...map.values()];
+  groups.forEach(g => {
+    g.items.sort((x,y) => y.score_total - x.score_total);
+    const prices = g.items.map(a => a._price);
+    const areas = g.items.map(a => a.exclusive_m2 || 0);
+    const ppps = g.items.map(a => a._ppp).filter(Boolean);
+    g.count = g.items.length;
+    g.minPrice = Math.min(...prices); g.maxPrice = Math.max(...prices);
+    g.minArea = Math.min(...areas); g.maxArea = Math.max(...areas);
+    g.minPpp = ppps.length ? Math.min(...ppps) : 0;
+    // 정렬 키는 대표 매물 기준(가격류는 최저가 기준)
+    g.score_total = g.head.score_total; g.grade = g.head.grade;
+    g.complex_name = g.head.complex_name;
+    g._price = g.minPrice; g._ppp = g.minPpp;
+    g.exclusive_m2 = g.minArea; g.households = g.head.households;
+    g.use_date = g.head.use_date; g.station_walk_min = g.head.station_walk_min;
+    g.grade_pct = g.head.grade_pct; g.real_gap_pct = g.head.real_gap_pct;
+    g._vol21 = g.head._vol21;
+  });
+  return groups;
+}
+
+function groupRow(g){
+  const a = g.head;
+  const tr = document.createElement("tr");
+  tr.className = "row grp" + (expandedKey === g.key ? " open" : "");
+  const priceRange = g.minPrice === g.maxPrice ? priceText(a)
+    : won(g.minPrice) + " ~ " + won(g.maxPrice);
+  const areaRange = g.minArea === g.maxArea ? g.minArea + "㎡"
+    : g.minArea + "~" + g.maxArea + "㎡";
+  tr.innerHTML =
+    '<td><span class="badge '+g.grade+'">'+g.grade+'</span> <b>'+g.score_total.toFixed(1)+'</b></td>' +
+    '<td><div class="cname"><span class="caret">'+(expandedKey===g.key?"▾":"▸")+'</span> '+a.complex_name+
+       ' <span class="tag dup">'+g.count+'건</span>'+tags(a).replace(/<span class="tag dup">[^<]*<\/span>/,"")+'</div>' +
+      '<div class="sub">'+a.sigu+' '+a.dong+'</div></td>' +
+    '<td class="price">'+priceRange+rpText(a)+'</td>' +
+    '<td class="hide-m">'+gapCell(a)+'</td>' +
+    '<td class="hide-m">'+volCell(a)+'</td>' +
+    '<td>'+areaRange+'</td>' +
+    '<td class="hide-m">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
+    '<td class="hide-m">'+(a.households||"-")+'</td>' +
+    '<td class="hide-m">'+ageText(a.use_date)+'</td>' +
+    '<td>'+stationText(a)+'</td>' +
+    '<td class="'+slopeCls(a.grade_pct)+'">'+(a.slope_label||"미상")+'</td>';
+  tr.onclick = () => {
+    expandedKey = (expandedKey === g.key) ? null : g.key;
+    openRow = null;
+    render();
+  };
+  return tr;
+}
+
 function render(){
   const rows = filtered();
-  rows.sort((x,y) => {
-    let a = x[sortKey], b = y[sortKey];
-    if (a==null) a = sortAsc ? Infinity : -Infinity;
-    if (b==null) b = sortAsc ? Infinity : -Infinity;
-    if (typeof a === "string") return sortAsc ? a.localeCompare(b) : b.localeCompare(a);
-    return sortAsc ? a-b : b-a;
-  });
-  document.getElementById("count").textContent = rows.length.toLocaleString() + "건";
-  document.querySelectorAll("thead th").forEach(th => {
-    th.querySelector(".arrow").textContent = th.dataset.k===sortKey ? (sortAsc?"▲":"▼") : ""; });
   const tb = document.getElementById("tbody");
   tb.innerHTML = "";
+  document.querySelectorAll("thead th").forEach(th => {
+    th.querySelector(".arrow").textContent = th.dataset.k===sortKey ? (sortAsc?"▲":"▼") : ""; });
   document.getElementById("empty").style.display = rows.length ? "none" : "";
   const frag = document.createDocumentFragment();
-  rows.slice(0, 500).forEach(a => {
-    const tr = document.createElement("tr");
-    tr.className = "row";
-    tr.innerHTML =
-      '<td><span class="badge '+a.grade+'">'+a.grade+'</span> <b>'+a.score_total.toFixed(1)+'</b></td>' +
-      '<td><div class="cname">'+a.complex_name+tags(a)+'</div>' +
-        '<div class="sub">'+a.sigu+' '+a.dong+(a.bld_dong?' · '+a.bld_dong+'동':'')+(a.floor_info?' · '+a.floor_info+'층':'')+'</div></td>' +
-      '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
-      '<td class="hide-m">'+gapCell(a)+'</td>' +
-      '<td class="hide-m">'+volCell(a)+'</td>' +
-      '<td>'+(a.exclusive_m2||"-")+'㎡</td>' +
-      '<td class="hide-m">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
-      '<td class="hide-m">'+(a.households||"-")+'</td>' +
-      '<td class="hide-m">'+ageText(a.use_date)+'</td>' +
-      '<td>'+stationText(a)+'</td>' +
-      '<td class="'+slopeCls(a.grade_pct)+'">'+(a.slope_label||"미상")+'</td>';
-    tr.onclick = () => toggleDetail(tr, a);
-    frag.appendChild(tr);
-  });
+
+  if (byComplex) {
+    const groups = groupByComplex(rows).sort(sortVals);
+    document.getElementById("count").textContent =
+      groups.length.toLocaleString() + "개 단지 · " + rows.length.toLocaleString() + "건";
+    groups.slice(0, 300).forEach(g => {
+      frag.appendChild(groupRow(g));
+      if (expandedKey === g.key) g.items.forEach(a => frag.appendChild(articleRow(a, true)));
+    });
+    tb.appendChild(frag);
+    if (groups.length > 300) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="11" class="sub" style="text-align:center">상위 300개 단지만 표시 — 필터를 좁혀보세요</td>';
+      tb.appendChild(tr);
+    }
+    return;
+  }
+
+  rows.sort(sortVals);
+  document.getElementById("count").textContent = rows.length.toLocaleString() + "건";
+  rows.slice(0, 500).forEach(a => frag.appendChild(articleRow(a, false)));
   tb.appendChild(frag);
   if (rows.length > 500) {
     const tr = document.createElement("tr");
