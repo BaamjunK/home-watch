@@ -160,10 +160,47 @@ def collect(cfg):
             a["jeonse_min"] = c.get("jeonse_min") or 0   # 단지 전세 호가 범위
             a["jeonse_max"] = c.get("jeonse_max") or 0
 
-        attach_real_prices(fin, dedup)
+        pyeongs = attach_real_prices(fin, dedup)
+        attach_complex_volume(fin, dedup, pyeongs)
         attach_poi(fin, dedup)
 
     return dedup
+
+
+def attach_complex_volume(fin, rows, pyeongs):
+    """2021년 거래량을 단지 전체(모든 평형 합산) 기준으로 집계.
+
+    평형별로만 세면 대단지도 특정 평형에서는 연 12건을 못 넘겨 대부분
+    걸러진다(평형 기준 184개 단지 vs 단지 기준). 단지의 모든 평형 타입을
+    순회해 합산하고, 함께 살 만한 평형(전용 59㎡+)의 거래량도 따로 남긴다.
+    기간 데이터는 확정치라 30일 캐시 — 첫 실행만 오래 걸린다.
+    """
+    cplx = sorted({a["complex_no"] for a in rows if a["complex_no"]})
+    total_calls = sum(len(pyeongs.get(c, [])) for c in cplx)
+    print(f"5) 2021년 단지 거래량 집계 (단지 {len(cplx)}곳 · 평형 {total_calls}개) …", flush=True)
+    vols, done = {}, 0
+    for cno in cplx:
+        types = pyeongs.get(cno) or []
+        n_all, n_big = 0, 0
+        for t in types:
+            try:
+                rows_ = fin.real_prices_range(cno, t["number"], "A1",
+                                              f"{VOLUME_YEAR}-01-01", f"{VOLUME_YEAR}-12-31")
+            except Exception:
+                continue
+            finally:
+                done += 1
+                if done % 300 == 0:
+                    print(f"   … {done}/{total_calls}", flush=True)
+                    fin.detail_cache.save()
+            n_all += len(rows_)
+            if (t.get("exclusive") or 0) >= 59:
+                n_big += len(rows_)
+        vols[cno] = {"count": n_all, "per_month": round(n_all / 12, 1),
+                     "count_59": n_big, "per_month_59": round(n_big / 12, 1)}
+    fin.detail_cache.save()
+    for a in rows:
+        a["vol_2021"] = vols.get(a["complex_no"])
 
 
 def attach_poi(fin, rows):
@@ -171,7 +208,7 @@ def attach_poi(fin, rows):
     from .poi import PoiCollector
     coords = {a["complex_no"]: (a["lat"], a["lng"])
               for a in rows if a.get("lat") and a.get("lng")}
-    print(f"5) 학군·인프라 POI 수집 (단지 {len(coords)}곳) …", flush=True)
+    print(f"6) 학군·인프라 POI 수집 (단지 {len(coords)}곳) …", flush=True)
     col = PoiCollector(fin, DATA / "parks.json")
     results, fails = {}, 0
     for j, (cno, (lat, lng)) in enumerate(coords.items(), 1):
@@ -362,7 +399,9 @@ def attach_real_prices(fin, rows):
                 fin.detail_cache.save()
         a["real_prices"] = rp[:3]        # 원본 이력은 최근 3건만 보관
         a["real_summary"] = summarize_real_prices(rp, a["trade_type"])
-        a["vol_2021"] = {"count": len(vol), "per_month": round(len(vol) / 12, 1)}
+        a["vol_2021_pyeong"] = {"count": len(vol), "per_month": round(len(vol) / 12, 1)}
+
+    return pyeongs
 
 
 def set_real_gap(a):
@@ -512,10 +551,10 @@ def enrich_and_score(cfg, rows):
     for a in rows:
         set_real_gap(a)
 
-    print("6) 최기역 계산 …", flush=True)
+    print("7) 최기역 계산 …", flush=True)
     attach_stations(rows)
 
-    print("7) 경사도(언덕) 계산 …", flush=True)
+    print("8) 경사도(언덕) 계산 …", flush=True)
     elev = ElevationClient(DATA / "cache" / "elevation.json")
     cplx_coords = {a["complex_no"]: (a["lat"], a["lng"])
                    for a in rows if a.get("lat") and a.get("lng")}
@@ -525,7 +564,7 @@ def enrich_and_score(cfg, rows):
         a["grade_pct"] = info["grade_pct"] if info else None
         a["slope_label"] = score.slope_label(a["grade_pct"])
 
-    print("8) 평점 계산 …", flush=True)
+    print("9) 평점 계산 …", flush=True)
     score.score_articles(rows, cfg["score_weights"], cfg["transit_hubs"])
     rows.sort(key=lambda a: -a["score_total"])
     return rows
@@ -551,7 +590,7 @@ def main():
         {"generated_at": time.strftime("%Y-%m-%d %H:%M"), "listings": rows},
         ensure_ascii=False), encoding="utf-8")
 
-    print("9) 대시보드 생성 …", flush=True)
+    print("10) 대시보드 생성 …", flush=True)
     out = ROOT / cfg["web"]["output_html"]
     webgen.render(rows, cfg, out)
     n_rent = sum(1 for a in rows if a["trade_type"] == "B2")

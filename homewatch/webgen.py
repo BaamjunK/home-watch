@@ -256,7 +256,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <th data-k="complex_name">단지 <span class="arrow"></span></th>
       <th data-k="_price">호가 <span class="arrow"></span></th>
       <th data-k="real_gap_pct" class="hide-m">실거래 대비(동일층) <span class="arrow"></span></th>
-      <th data-k="_vol21" class="hide-m">21년 거래 <span class="arrow"></span></th>
+      <th data-k="_vol21" class="hide-m">21년 거래(단지) <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -488,7 +488,7 @@ function articleRow(a, indent){
       + '</td>' +
     '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell(a)+'</td>' +
-    '<td class="hide-m" data-l="21년">'+volCell(a)+'</td>' +
+    '<td class="hide-m" data-l="21년 단지">'+volCell(a)+'</td>' +
     '<td data-l="전용">'+(a.exclusive_m2||"-")+'㎡</td>' +
     '<td class="hide-m" data-l="평당">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(indent ? "" : (a.households||"-"))+'</td>' +
@@ -551,7 +551,7 @@ function groupRow(g){
       '<div class="sub">'+a.sigu+' '+a.dong+'</div></td>' +
     '<td class="price">'+priceRange+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
-    '<td class="hide-m" data-l="21년">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
+    '<td class="hide-m" data-l="21년 단지">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
     '<td data-l="전용">'+areaRange+'</td>' +
     '<td class="hide-m" data-l="평당">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(a.households||"-")+'</td>' +
@@ -651,8 +651,10 @@ function toggleDetail(tr, a){
     fact("실거래 평균", rpAll) +
     fact("저층 1~3층", rpLow) +
     fact("일반층 4층~", rpHigh) +
-    (vol ? fact("2021년 거래량", vol.count + "건 · 월 " + vol.per_month + "건",
+    (vol ? fact("2021년 거래량(단지)", vol.count + "건 · 월 " + vol.per_month + "건",
                 vol.per_month >= 1 ? "good" : (vol.count === 0 ? "warn" : "")) : "") +
+    (vol && vol.count_59 != null ? fact("2021년 59㎡+ 거래", vol.count_59 + "건 · 월 " + vol.per_month_59 + "건") : "") +
+    (a.vol_2021_pyeong ? fact("2021년 이 평형", a.vol_2021_pyeong.count + "건 · 월 " + a.vol_2021_pyeong.per_month + "건") : "") +
     (a.low_floor ? fact("저층 할인율",
         (a.low_floor.discount_pct >= 0 ? "-" : "+") + Math.abs(a.low_floor.discount_pct) + "% (일반층 실거래 평균 대비)"
         + (a.low_floor.fair ? " · 적정" : " · 10% 미만"),
@@ -778,7 +780,7 @@ def render(rows, cfg, out_path: Path):
             "coverage_ratio", "construction_company", "highest_floor",
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
             "station_name", "station_m", "station_walk_min",
-            "real_prices", "real_summary", "vol_2021", "low_floor", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "real_prices", "real_summary", "vol_2021", "low_floor", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])
