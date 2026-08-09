@@ -322,10 +322,12 @@ function toggleMs(e){ e.stopPropagation();
 document.addEventListener("click", e => {
   if (!e.target.closest(".mspanel") && !e.target.closest("#msBtn"))
     document.getElementById("msPanel").classList.remove("open"); });
+let ALL_SIGUS = [];
 function msLabel(){
   const b = document.getElementById("msBtn");
-  b.textContent = selectedSigu.size === 0 ? "전체"
-    : (selectedSigu.size <= 2 ? [...selectedSigu].join(", ") : selectedSigu.size + "개 지역"); }
+  const n = selectedSigu.size;
+  b.textContent = (n === 0 || n === ALL_SIGUS.length) ? "전체"
+    : (n <= 2 ? [...selectedSigu].join(", ") : n + "개 지역"); }
 
 function filtered(){
   const rentMax = parseFloat(document.getElementById("fRent").value) * 1e4;
@@ -539,21 +541,27 @@ function toggleDetail(tr, a){
   all.className = "msall";
   all.innerHTML = '<input type="checkbox" id="msAll" checked> 전체';
   panel.appendChild(all);
+  ALL_SIGUS = sigus;
   sigus.forEach(s => {
     const l = document.createElement("label");
     const cb = document.createElement("input");
-    cb.type = "checkbox"; cb.value = s; cb.className = "msItem";
+    cb.type = "checkbox"; cb.value = s; cb.className = "msItem"; cb.checked = true;
+    selectedSigu.add(s);
     l.appendChild(cb); l.appendChild(document.createTextNode(" " + s));
     panel.appendChild(l);
   });
+  msLabel();
   panel.addEventListener("change", e => {
+    const items = document.querySelectorAll(".msItem");
     if (e.target.id === "msAll") {
+      // 전체를 켜면 하위 지역이 모두 켜지고, 거기서 원하는 것만 끄면 된다
+      const on = e.target.checked;
       selectedSigu.clear();
-      document.querySelectorAll(".msItem").forEach(c => c.checked = false);
+      items.forEach(c => { c.checked = on; if (on) selectedSigu.add(c.value); });
     } else {
       if (e.target.checked) selectedSigu.add(e.target.value);
       else selectedSigu.delete(e.target.value);
-      document.getElementById("msAll").checked = selectedSigu.size === 0;
+      document.getElementById("msAll").checked = selectedSigu.size === items.length;
     }
     msLabel(); render();
   });
