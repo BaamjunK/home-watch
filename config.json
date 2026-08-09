@@ -19,8 +19,8 @@
   "deal": {
     "min_households": 500,
     "min_exclusive_m2": 59.0,
-    "min_price_won": 700000000,
-    "max_price_won": 1200000000
+    "min_price_won": 800000000,
+    "max_price_won": 1300000000
   },
   "score_weights": {
     "value": 35,
