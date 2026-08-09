@@ -363,8 +363,33 @@ def attach_real_prices(fin, rows):
         a["real_prices"] = rp[:3]        # 원본 이력은 최근 3건만 보관
         a["real_summary"] = summarize_real_prices(rp, a["trade_type"])
         a["vol_2021"] = {"count": len(vol), "per_month": round(len(vol) / 12, 1)}
-        if rp and a["trade_type"] == "A1" and rp[0].get("deal"):
-            a["real_gap_pct"] = round((a["deal_price"] - rp[0]["deal"]) / rp[0]["deal"] * 100, 1)
+
+
+def set_real_gap(a):
+    """호가가 실거래 대비 얼마나 비싼지 — **같은 층 구분끼리** 비교.
+
+    저층 매물은 저층 실거래 평균과, 일반층 매물은 일반층 평균과 견준다.
+    직전 1건과 비교하면 그 거래가 1층이었거나 급매였을 때 통째로 왜곡되고,
+    전체 평균과 비교하면 저층 매물이 늘 싸 보이는 문제가 있다.
+    해당 구분에 표본이 없으면 전체 평균으로 폴백한다.
+    """
+    a["real_gap_pct"] = None
+    a["real_gap_basis"] = None
+    rs = a.get("real_summary")
+    if not rs:
+        return
+    group = "low" if is_low_floor(a) else "high"
+    base = (rs.get(group) or {}).get("eff")
+    label = "저층 평균" if group == "low" else "일반층 평균"
+    if not base:
+        base, label = (rs.get("all") or {}).get("eff"), "전체 평균"
+    if not base:
+        return
+    asking = score.effective_price(a)
+    if not asking:
+        return
+    a["real_gap_pct"] = round((asking - base) / base * 100, 1)
+    a["real_gap_basis"] = f"{rs['months']}개월 {label}"
 
 
 def group_same_units(rows):
@@ -484,6 +509,8 @@ def attach_stations(rows):
 
 def enrich_and_score(cfg, rows):
     attach_low_floor(rows)
+    for a in rows:
+        set_real_gap(a)
 
     print("6) 최기역 계산 …", flush=True)
     attach_stations(rows)
