@@ -37,7 +37,7 @@ h1 { font-size:20px; margin:0 0 2px; }
 .tab { flex:0 0 auto; padding:8px 22px; border-radius:10px; border:1px solid var(--line);
   background:var(--card); cursor:pointer; font-weight:600; font-size:14px; color:var(--sub); }
 .tab.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-#grpBtn { margin-left:auto; }
+#favBtn { margin-left:auto; }
 .wbtn { padding:8px 14px; border-radius:10px; border:1px solid var(--line);
   background:var(--card); cursor:pointer; font-size:13px; color:var(--ink); }
 .wpanel { display:none; padding:12px; background:var(--card); border:1px solid var(--line);
@@ -93,6 +93,10 @@ tbody tr.row:hover { background:var(--accent-soft); }
 .tag.gap { background:var(--accent-soft); color:var(--accent); }
 .tag.jgc { background:var(--line); color:var(--sub); }
 .tag.dup { background:var(--line); color:var(--sub); }
+.fav { border:none; background:none; cursor:pointer; font-size:15px; padding:0 4px;
+  color:var(--sub); line-height:1; vertical-align:-1px; }
+.fav.on { color:#f59e0b; }
+tbody tr.row td:first-child .fav { margin-left:2px; }
 tbody tr.grp { background:var(--card); }
 tbody tr.grp.open { background:var(--accent-soft); }
 tbody tr.grp .caret { color:var(--sub); font-size:11px; }
@@ -138,7 +142,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
   .tabs { flex-wrap:wrap; gap:6px; }
   .tab { flex:1 1 auto; padding:9px 12px; text-align:center; }
   .wbtn { margin-left:0 !important; flex:1 1 auto; white-space:nowrap; padding:9px 10px; font-size:12.5px; }
-  #grpBtn { margin-left:0 !important; }
+  #grpBtn, #favBtn { margin-left:0 !important; }
   .mobar { display:flex; }
   .mbtn { flex:0 0 auto; }
   /* 필터는 기본 접힘 — ⚙︎ 필터 버튼으로 펼친다 */
@@ -181,7 +185,8 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
   <div class="tabs">
     <button class="tab on" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
     <button class="tab" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
-    <button class="wbtn" id="grpBtn" onclick="toggleGroup()">🏢 단지별 묶기</button>
+    <button class="wbtn" id="favBtn" onclick="toggleFavView()">☆ 관심 <span id="favCnt"></span></button>
+    <button class="wbtn" style="margin-left:8px" id="grpBtn" onclick="toggleGroup()">🏢 단지별 묶기</button>
     <button class="wbtn" style="margin-left:8px" onclick="document.getElementById('wpanel').classList.toggle('open')">⚖️ 가중치 조정 <span id="wsum"></span></button>
     <button class="wbtn" style="margin-left:8px" onclick="document.getElementById('mpanel').classList.toggle('open')">📐 산정 방식</button>
   </div>
@@ -242,13 +247,20 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
     <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
+    <div class="f"><label>저장한 필터</label>
+      <select id="fPreset" onchange="loadPreset(this.value)"><option value="">선택…</option></select>
+    </div>
+    <div class="f chk">
+      <button class="wreset" onclick="savePreset()">＋ 현재 필터 저장</button>
+      <button class="wreset" onclick="deletePreset()" style="border-color:var(--line);color:var(--sub)">삭제</button>
+    </div>
   </div>
   <div class="mobar">
     <button class="wbtn mbtn" onclick="document.querySelector('.filters').classList.toggle('open')">⚙︎ 필터</button>
     <select id="mSort" class="msort" onchange="applyMobileSort(this.value)"></select>
   </div>
   <div class="count" id="count"></div>
-  <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건
+  <div class="count" id="defnote" style="margin-top:-6px">기본 필터 적용 중: 용적률 ≤350% · 21년 월거래 ≥1건(2020년 이후 준공 신축은 면제)
     <button class="wreset" style="margin-left:8px" onclick="clearDefaults()">기본 필터 해제</button></div>
   <table>
     <thead><tr>
@@ -354,6 +366,7 @@ function rpText(a){
   return '<div class="rp">실거래 평균 '+p+' <span style="opacity:.7">('+rs.months+'개월 '+rs.total+'건)</span></div>'; }
 function volCell(a){
   const v = a.vol_2021;
+  if (isNewBuild(a) && (!v || !v.count)) return '<span class="rp">신축</span>';
   if (!v) return "-";
   const cls = v.per_month >= 1 ? "down" : (v.count === 0 ? "up" : "");
   return '<span class="rp"><span class="'+cls+'">월 '+v.per_month+'</span>건</span>'; }
@@ -427,7 +440,8 @@ function filtered(){
   const lowOk = document.getElementById("fLowOk").checked;
   const noGap = document.getElementById("fNoGap").checked;
   return DATA.filter(a => {
-    if (a.trade_type !== trade) return false;
+    if (favView) { if (!favs.has(a.article_no)) return false; }
+    else if (a.trade_type !== trade) return false;
     if (selectedSigu.size && !selectedSigu.has(a.sigu)) return false;
     if (trade==="B2" && !isNaN(rentMax) && a.rent_price > rentMax) return false;
     if (trade==="B2" && !isNaN(warMax) && a.warranty_price > warMax) return false;
@@ -441,7 +455,8 @@ function filtered(){
     if (jgc === "only" && !a.is_jgc) return false;
     if (jgc === "excl" && a.is_jgc) return false;
     if (!isNaN(scMin) && a.score_total < scMin) return false;
-    if (!isNaN(volMin) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
+    // 2020년 이후 준공은 2021년에 거래가 없거나 희박한 게 정상 — 거래량 필터 면제
+    if (!isNaN(volMin) && !isNewBuild(a) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
@@ -453,6 +468,81 @@ function clearDefaults(){
   ["fFar","fVol"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("defnote").style.display = "none";
   render();
+}
+
+const FILTER_IDS = ["fRent","fWar","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore"];
+const SELECT_IDS = ["fSlope","fJgc"];
+const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
+let favs = new Set(JSON.parse(localStorage.getItem("hw_favs") || "[]"));
+let favView = false;
+
+function saveFavs(){ localStorage.setItem("hw_favs", JSON.stringify([...favs])); updateFavBtn(); }
+function updateFavBtn(){
+  const n = favs.size;
+  // textContent 로 갈아끼우면 내부 span 이 사라져 다음 갱신이 죽는다 — innerHTML 로 통째 재구성
+  document.getElementById("favBtn").innerHTML =
+    (favView ? "★ 관심" : "☆ 관심") + ' <span id="favCnt">' + (n ? "("+n+")" : "") + '</span>';
+}
+function toggleFav(e, no){
+  e.stopPropagation();
+  if (favs.has(no)) favs.delete(no); else favs.add(no);
+  saveFavs(); render();
+}
+function toggleFavView(){
+  favView = !favView; expandedKey = null; openRow = null;
+  document.getElementById("favBtn").classList.toggle("on", favView);
+  updateFavBtn(); render();
+}
+function favBtnHtml(a){
+  const on = favs.has(a.article_no);
+  return '<button class="fav'+(on?" on":"")+'" title="관심 매물" onclick="toggleFav(event,\''+a.article_no+'\')">'+(on?"★":"☆")+'</button>';
+}
+
+function getPresets(){ try { return JSON.parse(localStorage.getItem("hw_presets")||"[]"); } catch(e){ return []; } }
+function renderPresets(sel){
+  const list = getPresets();
+  const el = document.getElementById("fPreset");
+  el.innerHTML = '<option value="">선택…</option>' +
+    list.map((p,i) => '<option value="'+i+'"'+(sel==i?" selected":"")+'>'+p.name+'</option>').join("");
+}
+function savePreset(){
+  const name = prompt("필터 이름을 입력하세요", "내 조건 " + (getPresets().length+1));
+  if (!name) return;
+  const st = {name: name, trade: trade, sigus: [...selectedSigu], vals: {}, sels: {}, chks: {}};
+  FILTER_IDS.forEach(id => st.vals[id] = document.getElementById(id).value);
+  SELECT_IDS.forEach(id => st.sels[id] = document.getElementById(id).value);
+  CHECK_IDS.forEach(id => st.chks[id] = document.getElementById(id).checked);
+  const list = getPresets(); list.push(st);
+  localStorage.setItem("hw_presets", JSON.stringify(list));
+  renderPresets(list.length-1);
+}
+function loadPreset(i){
+  if (i === "") return;
+  const st = getPresets()[i];
+  if (!st) return;
+  FILTER_IDS.forEach(id => document.getElementById(id).value = st.vals[id] ?? "");
+  SELECT_IDS.forEach(id => document.getElementById(id).value = st.sels[id] ?? "");
+  CHECK_IDS.forEach(id => document.getElementById(id).checked = !!st.chks[id]);
+  selectedSigu = new Set(st.sigus || []);
+  document.querySelectorAll(".msItem").forEach(c => c.checked = selectedSigu.has(c.value));
+  document.getElementById("msAll").checked = selectedSigu.size === ALL_SIGUS.length;
+  msLabel();
+  if (st.trade && st.trade !== trade) setTrade(st.trade); else render();
+}
+function deletePreset(){
+  const el = document.getElementById("fPreset");
+  const i = el.value;
+  if (i === "") { alert("삭제할 필터를 먼저 선택하세요"); return; }
+  const list = getPresets();
+  if (!confirm('"'+list[i].name+'" 필터를 삭제할까요?')) return;
+  list.splice(i,1);
+  localStorage.setItem("hw_presets", JSON.stringify(list));
+  renderPresets();
+}
+
+function isNewBuild(a){
+  const y = parseInt((a.use_date||"").slice(0,4));
+  return !isNaN(y) && y >= 2020;
 }
 
 function tags(a){
@@ -479,7 +569,7 @@ function articleRow(a, indent){
   const tr = document.createElement("tr");
   tr.className = "row" + (indent ? " sub-row" : "");
   tr.innerHTML =
-    '<td><span class="badge '+a.grade+'">'+a.grade+'</span> <b>'+a.score_total.toFixed(1)+'</b></td>' +
+    '<td><span class="badge '+a.grade+'">'+a.grade+'</span> <b>'+a.score_total.toFixed(1)+'</b>'+favBtnHtml(a)+'</td>' +
     '<td>' + (indent
         ? '<div class="cname">'+(a.bld_dong?a.bld_dong+'동 ':'')+(a.floor_info?a.floor_info+'층':'')+tags(a)+'</div>'
           + '<div class="sub">'+(a.pyeong_name?a.pyeong_name+'타입 · ':'')+(a.realtor||'')+'</div>'
@@ -756,6 +846,8 @@ function toggleDetail(tr, a){
   }));
   buildWeightPanel();
   buildMobileSort();
+  renderPresets();
+  updateFavBtn();
   recompute();
   render();
 })();
