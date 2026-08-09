@@ -55,16 +55,20 @@ def collect(cfg):
     dongs = meta.resolve_dongs(cfg["regions"])
     print(f"   {len(dongs)}개 동", flush=True)
 
+    # 같은 "59㎡형"도 단지마다 58.92 / 59.98 처럼 표기가 갈린다. 하한을 딱 맞추면
+    # 0.1㎡ 차이로 같은 평형이 통째로 빠지므로 관용 오차만큼 넓게 받는다.
+    rent_min_m2 = rent_cfg["min_exclusive_m2"] - rent_cfg.get("area_tolerance_m2", 0)
+    deal_min_m2 = deal_cfg["min_exclusive_m2"] - deal_cfg.get("area_tolerance_m2", 0)
     rent_filter = {
         "warrantyPrice": {"min": 0, "max": rent_cfg["max_warranty_won"]},
         "rentPrice": {"min": 0, "max": rent_cfg["max_rent_won"]},
-        "space": {"min": rent_cfg["min_exclusive_m2"]},
+        "space": {"min": rent_min_m2},
         "filtersExclusiveSpace": True,
         "householdNumber": {"min": rent_cfg["min_households"]},
     }
     deal_filter = {
         "dealPrice": {"min": deal_cfg["min_price_won"], "max": deal_cfg["max_price_won"]},
-        "space": {"min": deal_cfg["min_exclusive_m2"]},
+        "space": {"min": deal_min_m2},
         "filtersExclusiveSpace": True,
         "householdNumber": {"min": deal_cfg["min_households"]},
     }
@@ -116,14 +120,14 @@ def collect(cfg):
 
             m2 = a.get("exclusive_m2")
             if a["trade_type"] == "B2":
-                if (not m2 or m2 < rent_cfg["min_exclusive_m2"]
+                if (not m2 or m2 < rent_min_m2
                         or a["warranty_price"] > rent_cfg["max_warranty_won"]
                         or a["rent_price"] > rent_cfg["max_rent_won"] or a["rent_price"] <= 0
                         or (a["households"] and a["households"] < rent_cfg["min_households"])
                         or is_sharehouse(a["description"], rent_cfg["exclude_keywords"])):
                     continue
             else:
-                if (not m2 or m2 < deal_cfg["min_exclusive_m2"]
+                if (not m2 or m2 < deal_min_m2
                         or not (deal_cfg["min_price_won"] <= a["deal_price"] <= deal_cfg["max_price_won"])
                         or (a["households"] and a["households"] < deal_cfg["min_households"])):
                     continue

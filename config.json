@@ -58,13 +58,15 @@
       "단기거주",
       "단기사용"
     ],
-    "min_value_ratio": 0.25
+    "min_value_ratio": 0.25,
+    "area_tolerance_m2": 2.0
   },
   "deal": {
     "min_households": 500,
     "min_exclusive_m2": 59.0,
     "min_price_won": 800000000,
-    "max_price_won": 1400000000
+    "max_price_won": 1400000000,
+    "area_tolerance_m2": 2.0
   },
   "score_weights": {
     "value": 35,
