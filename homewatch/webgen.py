@@ -462,10 +462,16 @@ function groupByComplex(rows){
     g.score_total = g.head.score_total; g.grade = g.head.grade;
     g.complex_name = g.head.complex_name;
     g._price = g.minPrice; g._ppp = g.minPpp;
-    g.exclusive_m2 = g.minArea; g.households = g.head.households;
+    // 면적은 정렬 방향에 맞춰(오름차순=최소, 내림차순=최대) 대표값을 잡아야 직관적
+    g.exclusive_m2 = sortAsc ? g.minArea : g.maxArea;
+    g.households = g.head.households;
     g.use_date = g.head.use_date; g.station_walk_min = g.head.station_walk_min;
-    g.grade_pct = g.head.grade_pct; g.real_gap_pct = g.head.real_gap_pct;
-    g._vol21 = g.head._vol21;
+    g.grade_pct = g.head.grade_pct;
+    // 실거래 대비는 단지 내 가장 저평가된 매물 기준(21년 거래량은 평형별이라 최대)
+    const gaps = g.items.map(a => a.real_gap_pct).filter(v => v != null);
+    g.real_gap_pct = gaps.length ? Math.min(...gaps) : null;
+    const vols = g.items.map(a => a._vol21).filter(v => v != null);
+    g._vol21 = vols.length ? Math.max(...vols) : null;
   });
   return groups;
 }
@@ -484,8 +490,8 @@ function groupRow(g){
        ' <span class="tag dup">'+g.count+'건</span>'+tags(a).replace(/<span class="tag dup">[^<]*<\/span>/,"")+'</div>' +
       '<div class="sub">'+a.sigu+' '+a.dong+'</div></td>' +
     '<td class="price">'+priceRange+rpText(a)+'</td>' +
-    '<td class="hide-m">'+gapCell(a)+'</td>' +
-    '<td class="hide-m">'+volCell(a)+'</td>' +
+    '<td class="hide-m">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
+    '<td class="hide-m">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
     '<td>'+areaRange+'</td>' +
     '<td class="hide-m">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
     '<td class="hide-m">'+(a.households||"-")+'</td>' +
