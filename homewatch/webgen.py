@@ -458,7 +458,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
         월세는 보증금+월세×12÷5.5%(전월세전환율)로 환산. 중위가보다 30% 싸면 10점, 같으면 5점, 30% 비싸면 0점. 표본 5건 미만이면 시·도 전체로 폴백.<br>
     </div><div>
       <b>교통</b> — ① 업무지구 70%: 판교·강남·여의도·시청 직선거리, 각 3km 이내 10점→25km 0점 선형, 4곳 평균
-        ② 역세권 30%: 최기역 도보 5분 이하 10점→25분 0점. 역 좌표는 OSM 수도권 508개 역, 도보시간=직선거리×1.35÷67m/분.
+        ② 역세권 30%: 최기역 도보 5분 이하 10점→25분 0점. 역 좌표는 OSM 수도권 508개 역. 고속·간선도로·지상철도·하천이 가로막으면 육교·지하도 경유 거리로 계산하고 횡단 1회당 2분 가산.
         <span class="hw">실제 대중교통 소요시간이 아닌 거리 근사.</span><br>
       <b>학군</b> — <b>단지 좌표 반경 실측</b>: 학원 밀집 35%(1km 내 학원 수, 500m 학원가 가점) + 배정 중학교 과밀도 25%(학급당 학생수÷시 평균 — 학군 선호 지역은 전입 수요로 과밀) + 초품아 25%(초등학교 거리, 200m 이내 만점) + 명문·특목고 근접 15%(2km 내 외고·과학고·국제고·주요 자사고).
         <span class="hw">특목고 진학률 원본(학교알리미)은 대량 수집이 불가능해, 진학 성과와 상관이 높은 학원 밀집도·중학교 과밀도로 대체한 추정치입니다.</span><br>
@@ -492,7 +492,7 @@ const SCORE_LABELS = {value:"가격가치", transit:"교통", school:"학군", i
 // 항목별 산정 방식 — 점수 바의 ? 아이콘에 붙는다
 const SCORE_HELP = {
   value: "같은 시군구·거래유형·면적밴드(59~85 / 85㎡+) 매물들의 <b>중위 평당가 대비 할인율</b>. 월세는 보증금+월세×12÷5.5%(전월세전환율)로 환산해 비교합니다. 중위가보다 30% 싸면 10점, 같으면 5점, 30% 비싸면 0점. 표본 5건 미만이면 시·도 전체로 폴백.",
-  transit: "<b>업무지구 70%</b>: 판교·강남·여의도·시청까지 직선거리, 각 3km 이내 10점 → 25km 0점 선형, 4곳 평균.<br><b>역세권 30%</b>: 최기역 도보 5분 이하 10점 → 25분 0점. 역 좌표는 OSM 수도권 508개 역, 도보시간 = 직선거리×1.35(경로 보정) ÷ 67m/분.<br><span class='hw'>실제 대중교통 소요시간(환승·배차)이 아닌 거리 근사입니다.</span>",
+  transit: "<b>업무지구 70%</b>: 판교·강남·여의도·시청까지 직선거리, 각 3km 이내 10점 → 25km 0점 선형, 4곳 평균.<br><b>역세권 30%</b>: 최기역 도보 5분 이하 10점 → 25분 0점. 역 좌표는 OSM 수도권 508개 역. 도보시간 = 경로거리×1.35 ÷ 67m/분이며, 단지와 역 사이를 <b>고속·간선도로 / 지상철도 / 하천이 가로막으면</b> 가장 가까운 육교·지하도를 경유하는 거리로 바꾸고 횡단 1회당 2분을 더합니다(터널 구간은 장애물로 보지 않음).<br><span class='hw'>실제 대중교통 소요시간(환승·배차)이 아닌 거리 근사입니다.</span>",
   school: "<b>단지 반경 실측</b> — 학원 밀집 35%(1km 내 학원 수, 500m 학원가 가점) + 배정 중학교 과밀도 25%(학급당 학생수÷시 평균, 학군 선호지는 전입 수요로 과밀) + 초품아 25%(초등학교 거리, 200m 이내 만점) + 명문·특목고 근접 15%(2km 내 외고·과학고·국제고·주요 자사고).<br><span class='hw'>특목고 진학률 원본(학교알리미)은 대량 수집이 불가능해, 진학 성과와 상관이 높은 지표로 대체한 추정치입니다.</span>",
   infra: "<b>단지 반경 실측</b>(각 20%) — 백화점 거리 · 대형마트 1km 개수/거리 · 병원 1km 개수 · 생활편의(편의점 500m + 약국 1km) · 공원 거리(OSM 수도권 5,591곳).<br>POI 수집에 실패한 단지만 시군구 평균 점수로 폴백합니다.",
   scale_age: "세대수 60%(300세대 5점 → 3,000세대 이상 10점 구간별) + 연식 40%(5년 이하 10점 → 35년 이상 3점). 재건축 단지는 개발 잠재가치로 +1 보정.",
@@ -586,7 +586,8 @@ function slopeCls(g){ if(g==null) return ""; if(g<3) return "slope-flat";
 function ageText(d){ if(!d) return "-"; const y = new Date().getFullYear() - parseInt(d.slice(0,4));
   return d.slice(0,4) + "년(" + y + "y)"; }
 function stationText(a){ if(!a.station_name) return "-";
-  return a.station_name + " <span class='sub'>" + a.station_walk_min + "분</span>"; }
+  return a.station_name + " <span class='sub'>" + a.station_walk_min + "분"
+    + (a.station_detour ? " 우회" : "") + "</span>"; }
 
 function setTrade(t){ trade = t; openRow = null; expandedKey = null;
   document.querySelectorAll(".tab").forEach(el => el.classList.toggle("on", el.dataset.trade===t));
@@ -1090,7 +1091,7 @@ def render(rows, cfg, out_path: Path):
             "lease_households", "lease_ratio", "parking_per_hh", "floor_area_ratio",
             "coverage_ratio", "construction_company", "highest_floor",
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
-            "station_name", "station_m", "station_walk_min",
+            "station_name", "station_m", "station_walk_min", "station_detour",
             "real_prices", "real_summary", "vol_2021", "low_floor", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE

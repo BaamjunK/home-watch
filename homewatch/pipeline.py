@@ -518,16 +518,22 @@ def drop_partial_rentals(rows, min_ratio):
 
 
 def attach_stations(rows):
-    """최기 지하철역 — data/subway_stations.json(OSM) 기준 직선거리 → 도보시간.
+    """최기역 + 도보 시간 — 고속도로·철도·하천 우회를 반영한다(walk.py).
 
-    도보시간 = 직선거리 × 1.35(경로 보정) ÷ 67m/분.
+    직선거리만 쓰면 사이에 장애물이 있어도 짧게 나온다(벽산타운1단지→동천역이
+    경부고속도로에 막혀 실제 10분인데 5분으로 계산되던 사례).
     """
+    from .walk import WalkRouter, meters
     path = DATA / "subway_stations.json"
     if not path.exists():
         print("   ! subway_stations.json 없음 — 역세권 표기 생략", flush=True)
         return rows
     stations = json.loads(path.read_text(encoding="utf-8"))
-    cache = {}
+    router = WalkRouter(DATA / "barriers.json", DATA / "crossings.json")
+    if not router.barriers:
+        print("   ! barriers.json 없음 — 직선거리 기준으로만 계산", flush=True)
+
+    cache, detoured = {}, 0
     for a in rows:
         if not (a.get("lat") and a.get("lng")):
             a["station_name"] = None
@@ -535,18 +541,20 @@ def attach_stations(rows):
         key = a["complex_no"]
         if key not in cache:
             lat, lng = a["lat"], a["lng"]
-            best, bd = None, 1e18
             coslat = math.cos(math.radians(lat))
-            for s in stations:
-                # 근사 평면거리(빠름) — 최근접 선별에는 충분
-                dy = (s["lat"] - lat) * 111_320
-                dx = (s["lon"] - lng) * 111_320 * coslat
+            best, bd = None, 1e18
+            for st in stations:
+                dy = (st["lat"] - lat) * 111_320
+                dx = (st["lon"] - lng) * 111_320 * coslat
                 d2 = dx * dx + dy * dy
                 if d2 < bd:
-                    bd, best = d2, s
-            dist = math.sqrt(bd)
-            cache[key] = (best["name"], round(dist), round(dist * 1.35 / 67))
-        a["station_name"], a["station_m"], a["station_walk_min"] = cache[key]
+                    bd, best = d2, st
+            minutes, routed, detour = router.walk((lat, lng), (best["lat"], best["lon"]))
+            cache[key] = (best["name"], routed, minutes, detour)
+            if detour:
+                detoured += 1
+        a["station_name"], a["station_m"], a["station_walk_min"], a["station_detour"] = cache[key]
+    print(f"   장애물 우회 반영 {detoured}/{len(cache)}개 단지", flush=True)
     return rows
 
 
