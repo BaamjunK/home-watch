@@ -133,6 +133,8 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 .vars .v { font-size:12px; color:var(--sub); padding:3px 0; }
 .vars .v a { color:var(--accent); }
 .empty { text-align:center; padding:50px 0; color:var(--sub); }
+.fresh { margin:10px 0; padding:10px 12px; border-radius:10px; font-size:13px;
+  background:var(--warn-soft); color:var(--warn); border:1px solid var(--warn); }
 .mobar { display:none; gap:8px; margin:10px 0 4px; }
 .msort { flex:1; padding:9px 10px; border:1px solid var(--line); border-radius:10px;
   background:var(--card); color:var(--ink); font-size:14px; }
@@ -183,8 +185,8 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
   <h1>__TITLE__</h1>
   <div class="meta">생성: __GENERATED__ · 데이터: 네이버 부동산 (동일매물 묶음·실거래 포함) · 교통=업무지구 70%+역세권 30%</div>
   <div class="tabs">
-    <button class="tab on" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
-    <button class="tab" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
+    <button class="tab" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
+    <button class="tab on" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
     <button class="wbtn" id="favBtn" onclick="toggleFavView()">☆ 관심 <span id="favCnt"></span></button>
     <button class="wbtn" style="margin-left:8px" id="grpBtn" onclick="toggleGroup()">🏢 단지별 묶기</button>
     <button class="wbtn" style="margin-left:8px" onclick="document.getElementById('wpanel').classList.toggle('open')">⚖️ 가중치 조정 <span id="wsum"></span></button>
@@ -218,10 +220,10 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <button class="msbtn" id="msBtn" onclick="toggleMs(event)">전체</button>
       <div class="mspanel" id="msPanel"></div>
     </div>
-    <div class="f" id="fRentBox"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="100"></div>
-    <div class="f" id="fWarBox"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="3"></div>
-    <div class="f" id="fDealMinBox" style="display:none"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
-    <div class="f" id="fDealBox" style="display:none"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
+    <div class="f" id="fRentBox" style="display:none"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="100"></div>
+    <div class="f" id="fWarBox" style="display:none"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="3"></div>
+    <div class="f" id="fDealMinBox"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
+    <div class="f" id="fDealBox"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
     <div class="f"><label>세대수 최소</label><input type="number" id="fHh" placeholder="300"></div>
     <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" placeholder="∞"></div>
@@ -246,7 +248,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease" style="font-size:13px;color:var(--ink)">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk" style="font-size:13px;color:var(--ink)">저층 할인부족 제외</label></div>
-    <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
+    <div class="f chk" id="fNoGapBox"><input type="checkbox" id="fNoGap"><label for="fNoGap" style="font-size:13px;color:var(--ink)">세안고 제외</label></div>
     <div class="f"><label>저장한 필터</label>
       <select id="fPreset" onchange="loadPreset(this.value)"><option value="">선택…</option></select>
     </div>
@@ -255,6 +257,7 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
       <button class="wreset" onclick="deletePreset()" style="border-color:var(--line);color:var(--sub)">삭제</button>
     </div>
   </div>
+  <div id="freshness" class="fresh" style="display:none"></div>
   <div class="mobar">
     <button class="wbtn mbtn" onclick="document.querySelector('.filters').classList.toggle('open')">⚙︎ 필터</button>
     <select id="mSort" class="msort" onchange="applyMobileSort(this.value)"></select>
@@ -282,6 +285,19 @@ tr.detail td { background:var(--bg); padding:14px 16px; }
 </div>
 <script>
 const DATA = __DATA__;
+const GENERATED_AT = "__GENERATED__";
+function hardReload(){ location.href = location.pathname + "?t=" + Date.now(); }
+(function checkFreshness(){
+  // 정적 페이지라 브라우저가 옛 HTML 을 캐시하면 사라진 매물이 계속 보인다.
+  // 갱신은 3시간마다 도므로 6시간 넘게 오래된 화면이면 캐시를 의심하고 알린다.
+  const gen = new Date(GENERATED_AT.replace(/-/g, "/"));
+  const hrs = (Date.now() - gen.getTime()) / 3600000;
+  if (!(hrs > 6)) return;
+  const el = document.getElementById("freshness");
+  el.style.display = "";
+  el.innerHTML = "이 화면은 " + Math.floor(hrs) + "시간 전 데이터입니다. 브라우저에 캐시된 옛 페이지일 수 있어요. " +
+    '<button class="wreset" style="margin-left:6px" onclick="hardReload()">최신으로 새로고침</button>';
+})();
 const DEFAULT_WEIGHTS = __WEIGHTS_JSON__;
 const SCORE_LABELS = {value:"가격가치", transit:"교통", school:"학군", infra:"인프라", scale_age:"규모·연식", slope:"언덕"};
 // 항목별 산정 방식 — 점수 바의 ? 아이콘에 붙는다
@@ -295,7 +311,7 @@ const SCORE_HELP = {
 };
 const PY = 3.3058, RATE = 0.055;
 let WEIGHTS = loadWeights();
-let trade = "B2", sortKey = "score_total", sortAsc = false, openRow = null;
+let trade = "A1", sortKey = "score_total", sortAsc = false, openRow = null;
 let byComplex = true, expandedKey = null;
 let selectedSigu = new Set();
 
@@ -630,6 +646,7 @@ function groupRow(g){
   const a = g.head;
   const tr = document.createElement("tr");
   tr.className = "row grp" + (expandedKey === g.key ? " open" : "");
+  tr.dataset.key = g.key;
   const priceRange = g.minPrice === g.maxPrice ? priceText(a)
     : won(g.minPrice) + " ~ " + won(g.maxPrice);
   const areaRange = g.minArea === g.maxArea ? g.minArea + "㎡"
@@ -649,9 +666,17 @@ function groupRow(g){
     '<td data-l="역">'+stationText(a)+'</td>' +
     '<td class="'+slopeCls(a.grade_pct)+'">'+(a.slope_label||"미상")+'</td>';
   tr.onclick = () => {
+    // 재렌더하면 위쪽(다른 단지의 펼침·상세)이 접히며 높이가 줄어 클릭한 행이
+    // 화면 밖으로 밀려난다. 클릭 전 화면 위치를 기억했다가 그대로 되돌린다.
+    const before = tr.getBoundingClientRect().top;
     expandedKey = (expandedKey === g.key) ? null : g.key;
     openRow = null;
     render();
+    const el = document.querySelector('tr.grp[data-key="' + g.key + '"]');
+    if (el) {
+      const after = el.getBoundingClientRect().top;
+      if (Math.abs(after - before) > 1) window.scrollBy(0, after - before);
+    }
   };
   return tr;
 }
@@ -705,7 +730,12 @@ function fact(k, v, cls){
 }
 
 function toggleDetail(tr, a){
-  if (openRow) { openRow.remove(); if (openRow._for === tr) { openRow = null; return; } }
+  const before = tr.getBoundingClientRect().top;
+  const fix = () => {
+    const after = tr.getBoundingClientRect().top;
+    if (Math.abs(after - before) > 1) window.scrollBy(0, after - before);
+  };
+  if (openRow) { openRow.remove(); if (openRow._for === tr) { openRow = null; fix(); return; } }
   const d = document.createElement("tr");
   d.className = "detail"; d._for = tr;
   let bars = "";
@@ -801,7 +831,7 @@ function toggleDetail(tr, a){
     '<div class="links"><a href="'+newland+'" target="_blank" rel="noopener">네이버 부동산에서 보기</a>' +
     '<a class="ghost" href="'+finland+'" target="_blank" rel="noopener">모바일 매물 페이지</a></div>' +
     vars + '</td>';
-  tr.after(d); openRow = d;
+  tr.after(d); openRow = d; fix();
 }
 
 (function init(){

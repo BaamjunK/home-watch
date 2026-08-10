@@ -18,6 +18,7 @@ navigator.webdriver 감지 시 404 로 튕긴다. 동작 조건(2026-08 검증):
 
 import json
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -177,22 +178,42 @@ class FinLandClient:
                 self._pw.stop()
 
     def _open_browser(self):
+        """Chrome 기동 — 잠자기 직후 등 GUI 세션이 덜 준비된 상태에서는
+        launch 가 타임아웃 나므로(자동 실행이 이 이유로 실패한 이력) 재시도한다."""
         if self._browser:
             try:
                 self._browser.close()
             except Exception:
                 pass
-        self._browser = self._pw.chromium.launch(
-            channel="chrome", headless=self.headless,
-            args=["--disable-blink-features=AutomationControlled"])
-        ctx = self._browser.new_context(
-            user_agent=UA, viewport={"width": 390, "height": 844},
-            is_mobile=True, locale="ko-KR")
-        self._page = ctx.new_page()
-        self._page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
-        self._page.wait_for_timeout(2000)
-        if "fin.land" not in self._page.url:
-            raise RuntimeError(f"fin.land 홈 로드 실패(봇 감지 가능성): {self._page.url}")
+            self._browser = None
+        last = None
+        for attempt, wait in enumerate((0, 600, 600)):
+            if wait:
+                print(f"   ! Chrome 기동 실패 — {wait//60}분 후 재시도 ({attempt}/2)",
+                      file=sys.stderr, flush=True)
+                time.sleep(wait)
+            try:
+                self._browser = self._pw.chromium.launch(
+                    channel="chrome", headless=self.headless, timeout=180000,
+                    args=["--disable-blink-features=AutomationControlled"])
+                ctx = self._browser.new_context(
+                    user_agent=UA, viewport={"width": 390, "height": 844},
+                    is_mobile=True, locale="ko-KR")
+                self._page = ctx.new_page()
+                self._page.goto(HOME_URL, wait_until="domcontentloaded", timeout=45000)
+                self._page.wait_for_timeout(2000)
+                if "fin.land" not in self._page.url:
+                    raise RuntimeError(f"fin.land 홈 로드 실패(봇 감지 가능성): {self._page.url}")
+                return
+            except Exception as e:
+                last = e
+                if self._browser:
+                    try:
+                        self._browser.close()
+                    except Exception:
+                        pass
+                    self._browser = None
+        raise RuntimeError(f"Chrome 기동 3회 실패: {last}")
 
     def _throttle(self):
         wait = self.interval + random.uniform(0, 0.3) - (time.time() - self._last)
