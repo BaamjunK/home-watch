@@ -1,0 +1,64 @@
+/* home-watch design tokens — Hallmark (editorial · Catalogue · Almanac)
+ * 이 파일이 정본. docs/index.html 은 homewatch/webgen.py TEMPLATE 에서 생성된다.
+ */
+/* Hallmark · genre: editorial · macrostructure: Catalogue · theme: Almanac (oat paper / terracotta)
+ * nav: N6 newspaper masthead · footer: Ft4 dense colophon · enrichment: none
+ * tone: 인쇄된 매물 카탈로그 · anchor hue: 75 (warm oat) · accent: terracotta 45
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+:root {
+  /* 종이 — 매물 전단의 웜 오트. 순백/순흑 없음 */
+  --color-paper:    oklch(97%   0.008 75);
+  --color-paper-2:  oklch(94.5% 0.010 72);
+  --color-paper-3:  oklch(91.5% 0.012 70);
+  --color-rule:     oklch(86%   0.012 68);
+  --color-rule-2:   oklch(70%   0.014 62);
+  --color-neutral:  oklch(57%   0.012 62);
+  --color-muted:    oklch(44%   0.012 58);
+  --color-ink:      oklch(23%   0.014 55);
+  /* 액센트는 벽돌색 하나 — 화면의 3% 이하 */
+  --color-accent:   oklch(51%   0.135 45);
+  --color-accent-2: oklch(93%   0.030 45);
+  --color-focus:    oklch(51%   0.160 45);
+  /* 데이터 신호 (기능용, 저채도) */
+  --color-good:     oklch(45%   0.095 152);
+  --color-warn:     oklch(50%   0.115 68);
+  --color-alert:    oklch(48%   0.150 28);
+  --color-star:     oklch(63%   0.130 78);
+  --color-shadow:   oklch(23%   0.014 55 / .14);
+
+  --font-display: "Nanum Myeongjo", ui-serif, Georgia, serif;
+  --font-body: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --space-4xs:.125rem; --space-3xs:.25rem; --space-2xs:.5rem; --space-xs:.75rem; --space-sm:1rem;
+  --space-md:1.5rem; --space-lg:2rem; --space-xl:3rem; --space-2xl:4.5rem;
+
+  --text-xs:.75rem;    --text-sm:.8125rem;  --text-base:.9375rem;
+  --text-md:1.0625rem; --text-lg:1.3125rem; --text-xl:1.625rem;
+  --text-display: clamp(1.75rem, 3.4vw + .75rem, 2.75rem);
+
+  --ease-out: cubic-bezier(.16,1,.3,1);
+  --dur-short: 160ms;
+  --radius-sm: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper:    oklch(16%   0.012 68);
+    --color-paper-2:  oklch(19.5% 0.013 68);
+    --color-paper-3:  oklch(23%   0.014 68);
+    --color-rule:     oklch(32%   0.014 66);
+    --color-rule-2:   oklch(45%   0.016 64);
+    --color-neutral:  oklch(62%   0.012 68);
+    --color-muted:    oklch(74%   0.010 70);
+    --color-ink:      oklch(93%   0.008 78);
+    --color-accent:   oklch(70%   0.115 48);
+    --color-accent-2: oklch(28%   0.045 45);
+    --color-focus:    oklch(72%   0.140 48);
+    --color-good:     oklch(70%   0.100 152);
+    --color-warn:     oklch(75%   0.105 70);
+    --color-alert:    oklch(68%   0.135 28);
+    --color-star:     oklch(76%   0.120 80);
+    --color-shadow:   oklch(4%    0.010 60 / .5);
+  }
+}
