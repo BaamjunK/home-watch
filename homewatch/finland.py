@@ -86,6 +86,7 @@ def _parse_article(item):
         "direction": detail.get("direction"),
         "description": detail.get("articleFeatureDescription") or "",
         "confirm_date": verify.get("articleConfirmDate"),
+        "exposure_date": verify.get("exposureStartDate"),   # 매물이 올라온 날
         "verification": verify.get("verificationType"),
         "realtor": broker.get("brokerageName"),
         "lat": coord.get("yCoordinate"),
@@ -275,7 +276,7 @@ class FinLandClient:
                 "articlePagingRequest": {"size": PAGE_SIZE, "userChannelType": "MOBILE",
                                          "articleSortType": "RANKING_DESC", "lastInfo": []}}
         return self._paged(ARTICLE_URL, body, "articlePagingRequest",
-                           _parse_article, f"art:{dong_code}:{trade_type}")
+                           _parse_article, f"art2:{dong_code}:{trade_type}")
 
     def complexes(self, dong_code: str, min_households: int = 0):
         """법정동 단지 목록 (세대수·좌표·연식) — 매물 있는 단지만."""

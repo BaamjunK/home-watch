@@ -517,6 +517,53 @@ def drop_partial_rentals(rows, min_ratio):
     return kept
 
 
+def attach_listed_at(rows):
+    """매물이 언제 올라왔는지 — 네이버 게시일 + 우리가 처음 본 시각.
+
+    네이버는 노출 시작일(exposureStartDate)을 날짜까지만 준다. 하루 5회 도는
+    수집에서 처음 본 시각을 따로 적어두면 시간대까지 남고, 게시일이 비어 있는
+    매물도 "언제부터 보였는지"를 말할 수 있다. 기록은 data/first_seen.json.
+    """
+    import datetime
+    path = DATA / "first_seen.json"
+    seen = {}
+    if path.exists():
+        try:
+            seen = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            seen = {}
+    now = datetime.datetime.now().replace(microsecond=0)
+    today = now.date()
+    fresh = 0
+    for a in rows:
+        no = a.get("article_no")
+        if not no:
+            continue
+        if no not in seen:
+            seen[no] = now.isoformat(timespec="minutes")
+            fresh += 1
+        a["first_seen"] = seen[no]
+
+        # 경과일은 네이버 게시일 우선, 없으면 우리가 처음 본 날
+        base = a.get("exposure_date") or seen[no][:10]
+        try:
+            d = datetime.date.fromisoformat(base)
+            a["listed_days"] = max(0, (today - d).days)
+            a["listed_date"] = base
+        except ValueError:
+            a["listed_days"] = None
+            a["listed_date"] = None
+
+    # 사라진 매물 기록은 90일 뒤 정리 (파일이 무한히 커지지 않게)
+    alive = {a.get("article_no") for a in rows}
+    cutoff = (now - datetime.timedelta(days=90)).isoformat(timespec="minutes")
+    seen = {k: v for k, v in seen.items() if k in alive or v >= cutoff}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(seen, ensure_ascii=False), encoding="utf-8")
+    print(f"   신규 매물 {fresh}건 · 기록 보유 {len(seen)}건", flush=True)
+    return rows
+
+
 def attach_stations(rows):
     """최기역 + 도보 시간 — 고속도로·철도·하천 우회를 반영한다(walk.py).
 
@@ -559,6 +606,7 @@ def attach_stations(rows):
 
 
 def enrich_and_score(cfg, rows):
+    attach_listed_at(rows)
     attach_low_floor(rows)
     for a in rows:
         set_real_gap(a)

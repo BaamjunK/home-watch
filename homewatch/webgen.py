@@ -412,6 +412,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
         <option value="8">언덕까지 (&lt;8%)</option>
       </select>
     </div>
+    <div class="f"><label>등록 N일 이내</label><input type="number" id="fListed" placeholder="∞"></div>
     <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" value="1" placeholder="0"></div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease">임대혼합 제외</label></div>
@@ -440,6 +441,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <th data-k="_price">호가 <span class="arrow"></span></th>
       <th data-k="real_gap_pct" class="hide-m">실거래 대비(동일층) <span class="arrow"></span></th>
       <th data-k="_vol21" class="hide-m">21년 거래(단지) <span class="arrow"></span></th>
+      <th data-k="listed_days" class="hide-m">등록 <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -466,7 +468,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <b>규모·연식</b> — 세대수 60%(300세대 5점~3,000세대+ 10점) + 연식 40%(≤5년 10점→35년+ 3점, 재건축 +1 보정).<br>
       <b>언덕</b> — 단지 중심 5×5 그리드(240m) 고도 평면 피팅 구배%. 위성 DEM 2종(SRTM 2000 / Copernicus 2011~15)의 최솟값 — 옛 지형·건물반영 과대오류 상쇄. &lt;1.5% 평지 10점 ~ 8%+ 급경사 1점.<br><br>
     </div><div>
-      <b>기타 표기</b> — 실거래: 네이버 공개 실거래(신고 기준, 반영 지연 있음), 같은 평형(전용면적 최근접 매칭) 최근 3건.
+      <b>등록</b> — 네이버 노출 시작일 기준 경과일. 값이 없으면 이 대시보드가 그 매물을 처음 본 날로 대신하고, 상세의 ‘처음 확인’에 수집 시각(하루 5회)까지 남깁니다. 3일 이내면 ‘신규’.<br><b>기타 표기</b> — 실거래: 네이버 공개 실거래(신고 기준, 반영 지연 있음), 같은 평형(전용면적 최근접 매칭) 최근 3건.
       실거래 대비(동일층): 호가를 <b>같은 층 구분</b>(저층 1~3층 / 일반층 4층~)의 최근 실거래 평균과 비교 — 직전 1건은 그 거래가 저층·급매면 왜곡되므로 쓰지 않음. 전세가율·갭: 단지 전세 호가 범위 기준(실거래 아님). 저층 할인율: 1~3층 매물의 호가를 같은 평형 <b>일반층(4층~) 실거래 평균</b>과 비교 — 저층은 채광·소음 탓에 통상 10% 이상 싸므로 그에 못 미치면 '할인부족'으로 표시. 세안고: 매물 설명 키워드 감지. 임대세대: 단지 등록 정보.
       부분임대(세대분리 원룸) 매물은 키워드+가격 정합성 검사로 자동 제외.
     </div></div>
@@ -499,6 +501,7 @@ const SCORE_HELP = {
   slope: "단지 중심 5×5 그리드(240m 범위) 고도에 최소제곱 평면을 피팅한 구배%. 위성 DEM 2종(SRTM 2000년 / Copernicus 2011~15년)에서 각각 구한 뒤 <b>최솟값</b>을 씁니다 — 각각 옛 지형·건물 높이 반영이라는 과대측정 오류가 있어 min이 실지형에 가깝습니다.<br>1.5% 미만 평지 10점 · 3% 완만 8점 · 5% 약한 언덕 6점 · 8% 언덕 3점 · 그 이상 급경사 1점.",
 };
 const PY = 3.3058, RATE = 0.055;
+const NEW_DAYS = 3;   // 이 안에 올라온 매물은 신규로 본다
 let WEIGHTS = loadWeights();
 let trade = "A1", sortKey = "score_total", sortAsc = false, openRow = null;
 let byComplex = true, expandedKey = null;
@@ -569,6 +572,12 @@ function rpText(a){
   const p = a.trade_type === "A1" ? wonShort(rs.all.avg)
     : wonShort(rs.all.avg) + (rs.all.rent_avg ? "/"+Math.round(rs.all.rent_avg/1e4)+"만" : "");
   return '<div class="rp">실거래 평균 '+p+' <span style="opacity:.7">('+rs.months+'개월 '+rs.total+'건)</span></div>'; }
+function listedCell(a){
+  const d = a.listed_days;
+  if (d == null) return "-";
+  const label = d === 0 ? "오늘" : (d === 1 ? "어제" : d + "일 전");
+  return '<span class="rp"><span class="'+(d <= NEW_DAYS ? "down" : "")+'">'+label+'</span></span>'; }
+
 function volCell(a){
   const v = a.vol_2021;
   if (isNewBuild(a) && (!v || !v.count)) return '<span class="rp">신축</span>';
@@ -600,7 +609,7 @@ function setTrade(t){ trade = t; openRow = null; expandedKey = null;
 
 const SORT_OPTS = [["score_total","평점 높은순",false],["_price","가격 낮은순",true],
   ["_price","가격 높은순",false],["_ppp","평당가 낮은순",true],["real_gap_pct","저평가순",true],
-  ["_vol21","거래 활발순",false],["station_walk_min","역 가까운순",true],
+  ["_vol21","거래 활발순",false],["listed_days","최근 등록순",true],["station_walk_min","역 가까운순",true],
   ["grade_pct","평지순",true],["exclusive_m2","면적 넓은순",false],["use_date","신축순",false],
   ["households","대단지순",false]];
 function buildMobileSort(){
@@ -640,6 +649,7 @@ function filtered(){
   const farMax = parseFloat(document.getElementById("fFar").value);
   const scMin = parseFloat(document.getElementById("fScore").value);
   const volMin = parseFloat(document.getElementById("fVol").value);
+  const listedMax = parseFloat(document.getElementById("fListed").value);
   const slopeMax = parseFloat(document.getElementById("fSlope").value);
   const jgc = document.getElementById("fJgc").value;
   const noLease = document.getElementById("fNoLease").checked;
@@ -663,6 +673,7 @@ function filtered(){
     if (!isNaN(scMin) && a.score_total < scMin) return false;
     // 2020년 이후 준공은 2021년에 거래가 없거나 희박한 게 정상 — 거래량 필터 면제
     if (!isNaN(volMin) && !isNewBuild(a) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
+    if (!isNaN(listedMax) && !(a.listed_days != null && a.listed_days <= listedMax)) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
@@ -757,6 +768,7 @@ function tags(a){
   if ((a.lease_ratio||0) >= 10) t += '<span class="tag lease">임대 '+a.lease_ratio+'%</span>';
   if (a.gap_sale) t += '<span class="tag gap">세안고</span>';
   if (a.dup_count) t += '<span class="tag dup">동일 +'+a.dup_count+'</span>';
+  if (a.listed_days != null && a.listed_days <= NEW_DAYS) t += '<span class="tag good">신규</span>';
   if (a.low_floor) t += a.low_floor.fair
     ? '<span class="tag good">저층 -'+a.low_floor.discount_pct+'%</span>'
     : '<span class="tag lease">저층 할인부족 '+(a.low_floor.discount_pct>0?"-":"+")+Math.abs(a.low_floor.discount_pct)+'%</span>';
@@ -785,6 +797,7 @@ function articleRow(a, indent){
     '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell(a)+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell(a)+'</td>' +
+    '<td class="hide-m" data-l="등록">'+listedCell(a)+'</td>' +
     '<td data-l="전용">'+(a.exclusive_m2||"-")+'㎡</td>' +
     '<td class="hide-m" data-l="평당">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(indent ? "" : (a.households||"-"))+'</td>' +
@@ -826,6 +839,8 @@ function groupByComplex(rows){
     // 실거래 대비는 단지 내 가장 저평가된 매물 기준(21년 거래량은 평형별이라 최대)
     const gaps = g.items.map(a => a.real_gap_pct).filter(v => v != null);
     g.real_gap_pct = gaps.length ? Math.min(...gaps) : null;
+    const days = g.items.map(a => a.listed_days).filter(v => v != null);
+    g.listed_days = days.length ? Math.min(...days) : null;
     const vols = g.items.map(a => a._vol21).filter(v => v != null);
     g._vol21 = vols.length ? Math.max(...vols) : null;
   });
@@ -849,6 +864,7 @@ function groupRow(g){
     '<td class="price">'+priceRange+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
+    '<td class="hide-m" data-l="등록">'+listedCell({listed_days: g.listed_days})+'</td>' +
     '<td data-l="전용">'+areaRange+'</td>' +
     '<td class="hide-m" data-l="평당">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(a.households||"-")+'</td>' +
@@ -891,7 +907,7 @@ function render(){
     tb.appendChild(frag);
     if (groups.length > 300) {
       const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="11" class="sub" style="text-align:center">상위 300개 단지만 표시 — 필터를 좁혀보세요</td>';
+      tr.innerHTML = '<td colspan="12" class="sub" style="text-align:center">상위 300개 단지만 표시 — 필터를 좁혀보세요</td>';
       tb.appendChild(tr);
     }
     return;
@@ -903,7 +919,7 @@ function render(){
   tb.appendChild(frag);
   if (rows.length > 500) {
     const tr = document.createElement("tr");
-    tr.innerHTML = '<td colspan="11" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
+    tr.innerHTML = '<td colspan="12" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
     tb.appendChild(tr);
   }
 }
@@ -1001,6 +1017,11 @@ function toggleDetail(tr, a){
     fact("세대수", (a.households||"-") + "세대 · " + ageText(a.use_date)) +
     (a.trade_type==="A1" ? fact("세안고(전세끼고)", a.gap_sale ? "설명에 언급 있음" : "언급 없음", a.gap_sale?"warn":"") : "") +
     (a.is_jgc ? fact("조합원 지위양도", a.jgc_transfer_restricted ? "제한 있음 ⚠" : "확인 필요", a.jgc_transfer_restricted?"warn":"") : "") +
+    fact("등록", a.listed_days != null
+        ? (a.listed_days === 0 ? "오늘" : a.listed_days + "일 전")
+          + (a.listed_date ? " (" + a.listed_date + ")" : "")
+        : null, a.listed_days != null && a.listed_days <= NEW_DAYS ? "good" : "") +
+    fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
     fact("확인매물", (a.verification==="OWNER"?"집주인 확인 · ":"") + (a.confirm_date||""));
   const newland = "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
   const finland = "https://fin.land.naver.com/articles/"+a.article_no;
@@ -1013,7 +1034,7 @@ function toggleDetail(tr, a){
         ' · <a href="https://new.land.naver.com/complexes/'+v.complex_no+'?articleNo='+v.article_no+'" target="_blank" rel="noopener">보기</a>'+
         (v.description?'<div class="sub">'+v.description+'</div>':'')+'</div>').join("") + '</div>';
   }
-  d.innerHTML = '<td colspan="11">' +
+  d.innerHTML = '<td colspan="12">' +
     '<div class="bars">'+bars+'</div>' +
     '<div class="facts">'+facts+'</div>' +
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
@@ -1092,7 +1113,8 @@ def render(rows, cfg, out_path: Path):
             "coverage_ratio", "construction_company", "highest_floor",
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
             "station_name", "station_m", "station_walk_min", "station_detour",
-            "real_prices", "real_summary", "vol_2021", "low_floor", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "real_prices", "real_summary", "vol_2021", "low_floor",
+            "listed_days", "listed_date", "first_seen", "exposure_date", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])
