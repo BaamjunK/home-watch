@@ -441,7 +441,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <th data-k="_price">호가 <span class="arrow"></span></th>
       <th data-k="real_gap_pct" class="hide-m">실거래 대비(동일층) <span class="arrow"></span></th>
       <th data-k="_vol21" class="hide-m">21년 거래(단지) <span class="arrow"></span></th>
-      <th data-k="listed_days" class="hide-m">등록 <span class="arrow"></span></th>
+      <th data-k="listed_days" class="hide-m">등록일 <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -572,11 +572,15 @@ function rpText(a){
   const p = a.trade_type === "A1" ? wonShort(rs.all.avg)
     : wonShort(rs.all.avg) + (rs.all.rent_avg ? "/"+Math.round(rs.all.rent_avg/1e4)+"만" : "");
   return '<div class="rp">실거래 평균 '+p+' <span style="opacity:.7">('+rs.months+'개월 '+rs.total+'건)</span></div>'; }
+function relDays(d){ return d === 0 ? "오늘" : (d === 1 ? "어제" : d + "일 전"); }
+
 function listedCell(a){
   const d = a.listed_days;
   if (d == null) return "-";
-  const label = d === 0 ? "오늘" : (d === 1 ? "어제" : d + "일 전");
-  return '<span class="rp"><span class="'+(d <= NEW_DAYS ? "down" : "")+'">'+label+'</span></span>'; }
+  // 날짜를 그대로 보여주고(정렬 기준과 눈으로 맞춰지도록) 경과일은 툴팁에 둔다
+  const ymd = a.listed_date ? a.listed_date.slice(5) : relDays(d);
+  return '<span class="rp" title="' + (a.listed_date || "") + ' · ' + relDays(d) + '">'
+    + '<span class="'+(d <= NEW_DAYS ? "down" : "")+'">' + ymd + '</span></span>'; }
 
 function volCell(a){
   const v = a.vol_2021;
@@ -797,7 +801,7 @@ function articleRow(a, indent){
     '<td class="price">'+priceText(a)+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell(a)+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell(a)+'</td>' +
-    '<td class="hide-m" data-l="등록">'+listedCell(a)+'</td>' +
+    '<td class="hide-m" data-l="등록일">'+listedCell(a)+'</td>' +
     '<td data-l="전용">'+(a.exclusive_m2||"-")+'㎡</td>' +
     '<td class="hide-m" data-l="평당">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(indent ? "" : (a.households||"-"))+'</td>' +
@@ -839,8 +843,10 @@ function groupByComplex(rows){
     // 실거래 대비는 단지 내 가장 저평가된 매물 기준(21년 거래량은 평형별이라 최대)
     const gaps = g.items.map(a => a.real_gap_pct).filter(v => v != null);
     g.real_gap_pct = gaps.length ? Math.min(...gaps) : null;
-    const days = g.items.map(a => a.listed_days).filter(v => v != null);
-    g.listed_days = days.length ? Math.min(...days) : null;
+    const newest = g.items.filter(a => a.listed_days != null)
+                          .sort((x, y) => x.listed_days - y.listed_days)[0];
+    g.listed_days = newest ? newest.listed_days : null;
+    g.listed_date = newest ? newest.listed_date : null;
     const vols = g.items.map(a => a._vol21).filter(v => v != null);
     g._vol21 = vols.length ? Math.max(...vols) : null;
   });
@@ -864,7 +870,7 @@ function groupRow(g){
     '<td class="price">'+priceRange+rpText(a)+'</td>' +
     '<td class="hide-m" data-l="실거래대비">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
-    '<td class="hide-m" data-l="등록">'+listedCell({listed_days: g.listed_days})+'</td>' +
+    '<td class="hide-m" data-l="등록일">'+listedCell({listed_days: g.listed_days, listed_date: g.listed_date})+'</td>' +
     '<td data-l="전용">'+areaRange+'</td>' +
     '<td class="hide-m" data-l="평당">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(a.households||"-")+'</td>' +
@@ -1082,7 +1088,7 @@ function toggleDetail(tr, a){
   document.querySelectorAll("thead th").forEach(th => th.addEventListener("click", () => {
     const k = th.dataset.k;
     if (sortKey === k) sortAsc = !sortAsc;
-    else { sortKey = k; sortAsc = (k==="complex_name"||k==="_price"||k==="_ppp"||k==="grade_pct"||k==="station_walk_min"||k==="real_gap_pct"); }
+    else { sortKey = k; sortAsc = (k==="complex_name"||k==="_price"||k==="_ppp"||k==="grade_pct"||k==="station_walk_min"||k==="real_gap_pct"||k==="listed_days"); }
     render();
   }));
   buildWeightPanel();
