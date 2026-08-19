@@ -230,7 +230,7 @@ tbody tr.sub-row td:first-child { padding-left:var(--space-md); }
 .badge.B { color:var(--color-ink); }
 .badge.C { color:var(--color-muted); }
 .badge.D { color:var(--color-muted); border-color:var(--color-neutral); }
-tbody td:first-child b { font-family:var(--font-num); font-size:var(--text-md); font-weight:600; }
+tbody tr.row td:first-child b { font-family:var(--font-num); font-size:var(--text-md); font-weight:600; }
 
 /* 태그 — 칠하지 않고 괘선으로 */
 .tag { display:inline-block; padding:0 .35em; margin-left:var(--space-3xs);
@@ -259,8 +259,9 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
   gap:var(--space-xs) var(--space-md); margin-bottom:var(--space-md); }
 .bar { font-size:var(--text-xs); }
 .bar .t { display:flex; justify-content:space-between; align-items:baseline;
-  color:var(--color-muted); gap:var(--space-2xs); }
-.bar .t b { font-family:var(--font-num); color:var(--color-ink); font-size:var(--text-sm); }
+  color:var(--color-muted); gap:var(--space-2xs); font-size:var(--text-xs); }
+.bar .t b { font-family:var(--font-num); color:var(--color-ink); font-size:var(--text-sm);
+  font-weight:600; }
 .bar .g { height:3px; background:var(--color-rule); overflow:hidden; margin-top:var(--space-3xs); }
 .bar .g i { display:block; height:100%; background:var(--color-accent); }
 .hbtn { border:1px solid var(--color-neutral); background:none; color:var(--color-muted);
@@ -275,13 +276,20 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
 .help.open { display:block; }
 .help b { color:var(--color-ink); }
 .help .hw { color:var(--color-warn); }
-.facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(11rem,1fr));
-  gap:var(--space-xs) var(--space-md); margin:0 0 var(--space-md);
-  padding:var(--space-sm) 0; border-top:1px solid var(--color-rule);
+.factgrp { margin:0 0 var(--space-sm); }
+.factgrp h4 { margin:0 0 var(--space-2xs); font-family:var(--font-body);
+  font-size:var(--text-xs); font-weight:600; letter-spacing:.08em;
+  color:var(--color-muted); padding-bottom:var(--space-3xs);
   border-bottom:1px solid var(--color-rule); }
-.fact { font-size:var(--text-xs); }
-.fact b { display:block; font-size:var(--text-sm); font-weight:600; margin-top:var(--space-4xs); }
-.fact .k { color:var(--color-muted); letter-spacing:.03em; }
+.facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr));
+  gap:var(--space-xs) var(--space-md); margin:0; }
+.fact { font-size:var(--text-xs); line-height:1.45; min-width:0; }
+.fact b { display:block; font-size:var(--text-sm); font-weight:600; line-height:1.4;
+  margin-top:1px; overflow-wrap:anywhere; }
+.fact .k { display:block; color:var(--color-muted); letter-spacing:.02em;
+  font-size:var(--text-xs); }
+.fact .n { display:block; color:var(--color-neutral); font-size:var(--text-xs);
+  line-height:1.35; }
 .fact.warn b { color:var(--color-warn); }
 .fact.good b { color:var(--color-good); }
 .desc { font-size:var(--text-sm); margin:var(--space-2xs) 0; padding-left:var(--space-xs);
@@ -357,7 +365,8 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
   tr.detail { display:block; }
   tr.detail td { display:block; padding:var(--space-sm) 0; }
   .bars { grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--space-2xs) var(--space-sm); }
-  .facts { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .facts { grid-template-columns:repeat(auto-fill,minmax(9rem,1fr)); gap:var(--space-2xs) var(--space-sm); }
+  .fact b { overflow-wrap:normal; word-break:keep-all; }
   .links a { flex:1 1 auto; text-align:center; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -936,9 +945,15 @@ function toggleHelp(e, k){
   if (el) el.classList.toggle("open");
 }
 
-function fact(k, v, cls){
+function fact(k, v, cls, note){
   if (v === null || v === undefined || v === "") return "";
-  return '<div class="fact'+(cls?' '+cls:'')+'"><span class="k">'+k+'</span><b>'+v+'</b></div>';
+  return '<div class="fact'+(cls?' '+cls:'')+'"><span class="k">'+k+'</span><b>'+v+'</b>'
+    + (note ? '<span class="n">'+note+'</span>' : '') + '</div>';
+}
+
+function factGroup(title, inner){
+  if (!inner) return "";
+  return '<section class="factgrp"><h4>'+title+'</h4><div class="facts">'+inner+'</div></section>';
 }
 
 function toggleDetail(tr, a){
@@ -975,60 +990,77 @@ function toggleDetail(tr, a){
     const ratio = Math.round(a.jeonse_max / a.deal_price * 100);
     const gap = a.deal_price - a.jeonse_max;
     jeonseFacts =
-      fact("단지 전세 호가", wonShort(a.jeonse_min)+" ~ "+wonShort(a.jeonse_max)+" (전세가율 "+ratio+"%)") +
-      fact("갭(호가-전세최고)", wonShort(gap), gap <= 300000000 ? "good" : "");
+      fact("단지 전세 호가", wonShort(a.jeonse_min)+" ~ "+wonShort(a.jeonse_max), "",
+           "전세가율 "+ratio+"%") +
+      fact("갭(호가−전세최고)", wonShort(gap), gap <= 300000000 ? "good" : "");
   }
   const vol = a.vol_2021;
-  const facts =
-    fact("실거래 평균", rpAll) +
-    fact("저층 1~3층", rpLow) +
-    fact("일반층 4층~", rpHigh) +
-    (vol ? fact("2021년 거래량(단지)", vol.count + "건 · 월 " + vol.per_month + "건",
-                vol.per_month >= 1 ? "good" : (vol.count === 0 ? "warn" : "")) : "") +
-    (vol && vol.count_59 != null ? fact("2021년 59㎡+ 거래", vol.count_59 + "건 · 월 " + vol.per_month_59 + "건") : "") +
-    (a.vol_2021_pyeong ? fact("2021년 이 평형", a.vol_2021_pyeong.count + "건 · 월 " + a.vol_2021_pyeong.per_month + "건") : "") +
-    (a.low_floor ? fact("저층 할인율",
-        (a.low_floor.discount_pct >= 0 ? "-" : "+") + Math.abs(a.low_floor.discount_pct) + "% (일반층 실거래 평균 대비)"
-        + (a.low_floor.fair ? " · 적정" : " · 10% 미만"),
-        a.low_floor.fair ? "good" : "warn") : "") +
-    (a.real_gap_pct != null
-      ? fact("실거래 대비 호가", (a.real_gap_pct>0?"+":"")+a.real_gap_pct+"%"
-             + (a.real_gap_basis ? " (" + a.real_gap_basis + ")" : ""),
-             a.real_gap_pct <= 0 ? "good" : (a.real_gap_pct >= 10 ? "warn" : "")) : "") +
-    jeonseFacts +
-    fact("평형", (a.pyeong_name||"") + (a.pyeong_households ? " · "+a.pyeong_households+"세대" : "")) +
-    (a.poi ? fact("학원가", (a.poi.academy_1km||0)+"곳/1km" + (a.poi.academy_500m ? " ("+a.poi.academy_500m+"곳/500m)" : ""),
-                  (a.poi.academy_1km||0) >= 50 ? "good" : ((a.poi.academy_1km||0) < 5 ? "warn" : "")) : "") +
-    (a.poi && a.poi.middle_crowding != null
-      ? fact("배정중 과밀도", a.poi.middle_crowding+"배 (시평균=1)",
-             a.poi.middle_crowding >= 1.2 ? "good" : "") : "") +
-    (a.poi && (a.poi.elite_high||[]).length ? fact("명문·특목고", a.poi.elite_high.join(", "), "good") : "") +
-    (a.poi && a.poi.elem_near_m != null ? fact("초등학교", a.poi.elem_near_m+"m",
-             a.poi.elem_near_m <= 300 ? "good" : (a.poi.elem_near_m > 800 ? "warn" : "")) : "") +
-    (a.poi ? fact("생활 인프라",
-        [(a.poi.dept_near_m != null ? "백화점 "+a.poi.dept_near_m+"m" : null),
-         (a.poi.mart_1km ? "마트 "+a.poi.mart_1km+"곳" : (a.poi.mart_near_m != null ? "마트 "+a.poi.mart_near_m+"m" : null)),
-         (a.poi.hospital_1km ? "병원 "+a.poi.hospital_1km : null),
-         (a.poi.conv_500m ? "편의점 "+a.poi.conv_500m : null)].filter(Boolean).join(" · ") || "정보 없음") : "") +
-    (a.poi ? fact("공원", a.poi.park_near_m != null ? "최근접 "+a.poi.park_near_m+"m" : "1km 내 없음",
-             a.poi.park_near_m != null && a.poi.park_near_m <= 300 ? "good" : "") : "") +
-    fact("임대세대", a.lease_households ? a.lease_households+"세대 ("+a.lease_ratio+"%)" : "없음", (a.lease_ratio||0)>=10?"warn":"") +
-    fact("세대당 주차", a.parking_per_hh != null ? a.parking_per_hh+"대" : null, a.parking_per_hh != null && a.parking_per_hh < 1 ? "warn":"") +
-    fact("용적률/건폐율", a.floor_area_ratio ? a.floor_area_ratio+"% / "+(a.coverage_ratio||"-")+"%" : null) +
-    fact("최기역", a.station_name ? a.station_name+"역 도보 "+a.station_walk_min+"분 ("+a.station_m+"m)" : null, a.station_walk_min > 15?"warn":"") +
-    fact("경사", a.slope_label + (a.grade_pct!=null ? " ("+a.grade_pct+"%)" : ""), a.grade_pct >= 5?"warn":"") +
-    fact("관리비", a.mgmt_fee ? Math.round(a.mgmt_fee/1e4)+"만원" : null) +
-    fact("건설사", a.construction_company) +
-    fact("최고층", a.highest_floor ? a.highest_floor+"층" : null) +
-    fact("세대수", (a.households||"-") + "세대 · " + ageText(a.use_date)) +
-    (a.trade_type==="A1" ? fact("세안고(전세끼고)", a.gap_sale ? "설명에 언급 있음" : "언급 없음", a.gap_sale?"warn":"") : "") +
-    (a.is_jgc ? fact("조합원 지위양도", a.jgc_transfer_restricted ? "제한 있음 ⚠" : "확인 필요", a.jgc_transfer_restricted?"warn":"") : "") +
-    fact("등록", a.listed_days != null
-        ? (a.listed_days === 0 ? "오늘" : a.listed_days + "일 전")
-          + (a.listed_date ? " (" + a.listed_date + ")" : "")
-        : null, a.listed_days != null && a.listed_days <= NEW_DAYS ? "good" : "") +
-    fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
-    fact("확인매물", (a.verification==="OWNER"?"집주인 확인 · ":"") + (a.confirm_date||""));
+  // 20개 넘는 항목을 한 덩어리로 두면 읽히지 않는다 — 주제별로 묶는다
+  const facts = factGroup("시세",
+      fact("실거래 평균", rpAll) +
+      fact("저층 1~3층", rpLow) +
+      fact("일반층 4층~", rpHigh) +
+      (a.real_gap_pct != null
+        ? fact("실거래 대비 호가", (a.real_gap_pct>0?"+":"")+a.real_gap_pct+"%",
+               a.real_gap_pct <= 0 ? "good" : (a.real_gap_pct >= 10 ? "warn" : ""),
+               a.real_gap_basis) : "") +
+      (a.low_floor ? fact("저층 할인율",
+          (a.low_floor.discount_pct >= 0 ? "-" : "+") + Math.abs(a.low_floor.discount_pct) + "%",
+          a.low_floor.fair ? "good" : "warn",
+          "일반층 대비 · " + (a.low_floor.fair ? "적정" : "10% 미만")) : "") +
+      jeonseFacts)
+    + factGroup("거래량",
+      (vol ? fact("2021년 단지 전체", vol.count + "건", 
+                  vol.per_month >= 1 ? "good" : (vol.count === 0 ? "warn" : ""),
+                  "월 " + vol.per_month + "건") : "") +
+      (vol && vol.count_59 != null ? fact("2021년 59㎡+", vol.count_59 + "건", "",
+                  "월 " + vol.per_month_59 + "건") : "") +
+      (a.vol_2021_pyeong ? fact("2021년 이 평형", a.vol_2021_pyeong.count + "건", "",
+                  "월 " + a.vol_2021_pyeong.per_month + "건") : ""))
+    + factGroup("입지",
+      fact("최기역", a.station_name ? a.station_name+"역 "+a.station_walk_min+"분" : null,
+           a.station_walk_min > 15?"warn":"",
+           a.station_m ? a.station_m+"m" + (a.station_detour ? " · 우회" : "") : null) +
+      (a.poi ? fact("학원가", (a.poi.academy_1km||0)+"곳", 
+                    (a.poi.academy_1km||0) >= 50 ? "good" : ((a.poi.academy_1km||0) < 5 ? "warn" : ""),
+                    "1km" + (a.poi.academy_500m ? " · 500m 내 "+a.poi.academy_500m+"곳" : "")) : "") +
+      (a.poi && a.poi.middle_crowding != null
+        ? fact("배정중 과밀도", a.poi.middle_crowding+"배",
+               a.poi.middle_crowding >= 1.2 ? "good" : "", "시평균 = 1") : "") +
+      (a.poi && a.poi.elem_near_m != null ? fact("초등학교", a.poi.elem_near_m+"m", 
+               a.poi.elem_near_m <= 300 ? "good" : (a.poi.elem_near_m > 800 ? "warn" : "")) : "") +
+      (a.poi && (a.poi.elite_high||[]).length ? fact("명문·특목고", a.poi.elite_high.join(", "), "good") : "") +
+      (a.poi ? fact("공원", a.poi.park_near_m != null ? a.poi.park_near_m+"m" : "1km 내 없음",
+               a.poi.park_near_m != null && a.poi.park_near_m <= 300 ? "good" : "") : "") +
+      fact("경사", a.slope_label, a.grade_pct >= 5?"warn":"",
+           a.grade_pct!=null ? "구배 "+a.grade_pct+"%" : null) +
+      (a.poi ? fact("생활 인프라",
+          [(a.poi.dept_near_m != null ? "백화점 "+a.poi.dept_near_m+"m" : null),
+           (a.poi.mart_1km ? "마트 "+a.poi.mart_1km : (a.poi.mart_near_m != null ? "마트 "+a.poi.mart_near_m+"m" : null)),
+           (a.poi.hospital_1km ? "병원 "+a.poi.hospital_1km : null),
+           (a.poi.conv_500m ? "편의점 "+a.poi.conv_500m : null)].filter(Boolean).join(" · ") || "정보 없음") : ""))
+    + factGroup("단지",
+      fact("세대수", (a.households||"-")+"세대", "", ageText(a.use_date)) +
+      fact("평형", (a.pyeong_name||"-"), "", a.pyeong_households ? a.pyeong_households+"세대" : null) +
+      fact("임대세대", a.lease_households ? a.lease_households+"세대" : "없음",
+           (a.lease_ratio||0)>=10?"warn":"", a.lease_ratio ? a.lease_ratio+"%" : null) +
+      fact("세대당 주차", a.parking_per_hh != null ? a.parking_per_hh+"대" : null,
+           a.parking_per_hh != null && a.parking_per_hh < 1 ? "warn":"") +
+      fact("용적률/건폐율", a.floor_area_ratio ? a.floor_area_ratio+"% / "+(a.coverage_ratio||"-")+"%" : null) +
+      fact("최고층", a.highest_floor ? a.highest_floor+"층" : null) +
+      fact("건설사", a.construction_company) +
+      (a.is_jgc ? fact("조합원 지위양도", a.jgc_transfer_restricted ? "제한 있음" : "확인 필요",
+           a.jgc_transfer_restricted?"warn":"") : ""))
+    + factGroup("이 매물",
+      fact("등록", a.listed_date || null,
+           a.listed_days != null && a.listed_days <= NEW_DAYS ? "good" : "",
+           a.listed_days != null ? relDays(a.listed_days) : null) +
+      fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
+      fact("확인매물", a.confirm_date || null, "",
+           a.verification==="OWNER" ? "집주인 확인" : null) +
+      fact("관리비", a.mgmt_fee ? Math.round(a.mgmt_fee/1e4)+"만원" : null) +
+      (a.trade_type==="A1" ? fact("세안고(전세끼고)", a.gap_sale ? "언급 있음" : "언급 없음",
+           a.gap_sale?"warn":"") : ""));
   const newland = "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
   const finland = "https://fin.land.naver.com/articles/"+a.article_no;
   let vars = "";
@@ -1042,7 +1074,7 @@ function toggleDetail(tr, a){
   }
   d.innerHTML = '<td colspan="12">' +
     '<div class="bars">'+bars+'</div>' +
-    '<div class="facts">'+facts+'</div>' +
+    facts +
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
     '<div class="sub">'+[a.direction?("향: "+a.direction):null, a.realtor].filter(Boolean).join(" · ")+'</div>' +
     '<div class="links"><a href="'+newland+'" target="_blank" rel="noopener">네이버 부동산에서 보기</a>' +
