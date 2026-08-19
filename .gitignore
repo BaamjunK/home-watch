@@ -4,3 +4,4 @@ data/cache/
 data/*.log
 data/*.png
 .DS_Store
+data/first_seen.json
