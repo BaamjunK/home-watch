@@ -6,7 +6,8 @@ cd "$(dirname "$0")"
 
 /usr/bin/python3 -m homewatch.pipeline
 
-git add data/listings.json docs/index.html
+# first_seen.json 은 되돌릴 수 없는 관측 기록이라 함께 남긴다
+git add data/listings.json docs/index.html data/first_seen.json
 if git diff --cached --quiet; then
     echo "$(date '+%F %T') 변경 없음 — 커밋 생략"
     exit 0
