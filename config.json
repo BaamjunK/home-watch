@@ -17,8 +17,9 @@
   "rent": {
     "min_households": 300,
     "min_exclusive_m2": 59.0,
-    "max_warranty_won": 300000000,
-    "max_rent_won": 1000000,
+    "min_warranty_won": 100000000,
+    "max_warranty_won": 400000000,
+    "max_rent_won": 1500000,
     "exclude_keywords": [
       "쉐어",
       "셰어",

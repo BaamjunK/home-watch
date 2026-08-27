@@ -60,7 +60,8 @@ def collect(cfg):
     rent_min_m2 = rent_cfg["min_exclusive_m2"] - rent_cfg.get("area_tolerance_m2", 0)
     deal_min_m2 = deal_cfg["min_exclusive_m2"] - deal_cfg.get("area_tolerance_m2", 0)
     rent_filter = {
-        "warrantyPrice": {"min": 0, "max": rent_cfg["max_warranty_won"]},
+        "warrantyPrice": {"min": rent_cfg.get("min_warranty_won", 0),
+                          "max": rent_cfg["max_warranty_won"]},
         "rentPrice": {"min": 0, "max": rent_cfg["max_rent_won"]},
         "space": {"min": rent_min_m2},
         "filtersExclusiveSpace": True,
@@ -121,6 +122,7 @@ def collect(cfg):
             m2 = a.get("exclusive_m2")
             if a["trade_type"] == "B2":
                 if (not m2 or m2 < rent_min_m2
+                        or a["warranty_price"] < rent_cfg.get("min_warranty_won", 0)
                         or a["warranty_price"] > rent_cfg["max_warranty_won"]
                         or a["rent_price"] > rent_cfg["max_rent_won"] or a["rent_price"] <= 0
                         or (a["households"] and a["households"] < rent_cfg["min_households"])

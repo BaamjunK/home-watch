@@ -397,8 +397,9 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <button class="msbtn" id="msBtn" onclick="toggleMs(event)">전체</button>
       <div class="mspanel" id="msPanel"></div>
     </div>
-    <div class="f" id="fRentBox" style="display:none"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="100"></div>
-    <div class="f" id="fWarBox" style="display:none"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="3"></div>
+    <div class="f" id="fRentBox" style="display:none"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="150"></div>
+    <div class="f" id="fWarMinBox" style="display:none"><label>보증금 최소(억)</label><input type="number" id="fWarMin" step="0.5" placeholder="1"></div>
+    <div class="f" id="fWarBox" style="display:none"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="4"></div>
     <div class="f" id="fDealMinBox"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
     <div class="f" id="fDealBox"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
@@ -615,6 +616,7 @@ function setTrade(t){ trade = t; openRow = null; expandedKey = null;
   document.querySelectorAll(".tab").forEach(el => el.classList.toggle("on", el.dataset.trade===t));
   document.getElementById("fRentBox").style.display = t==="B2" ? "" : "none";
   document.getElementById("fWarBox").style.display = t==="B2" ? "" : "none";
+  document.getElementById("fWarMinBox").style.display = t==="B2" ? "" : "none";
   document.getElementById("fDealBox").style.display = t==="A1" ? "" : "none";
   document.getElementById("fDealMinBox").style.display = t==="A1" ? "" : "none";
   document.getElementById("fNoGapBox").style.display = t==="A1" ? "" : "none";
@@ -654,6 +656,7 @@ function msLabel(){
 function filtered(){
   const rentMax = parseFloat(document.getElementById("fRent").value) * 1e4;
   const warMax = parseFloat(document.getElementById("fWar").value) * 1e8;
+  const warMin = parseFloat(document.getElementById("fWarMin").value) * 1e8;
   const dealMax = parseFloat(document.getElementById("fDeal").value) * 1e8;
   const dealMin = parseFloat(document.getElementById("fDealMin").value) * 1e8;
   const areaMin = parseFloat(document.getElementById("fArea").value);
@@ -674,6 +677,7 @@ function filtered(){
     if (selectedSigu.size && !selectedSigu.has(a.sigu)) return false;
     if (trade==="B2" && !isNaN(rentMax) && a.rent_price > rentMax) return false;
     if (trade==="B2" && !isNaN(warMax) && a.warranty_price > warMax) return false;
+    if (trade==="B2" && !isNaN(warMin) && a.warranty_price < warMin) return false;
     if (trade==="A1" && !isNaN(dealMax) && a.deal_price > dealMax) return false;
     if (trade==="A1" && !isNaN(dealMin) && a.deal_price < dealMin) return false;
     if (!isNaN(areaMin) && (a.exclusive_m2||0) < areaMin) return false;
@@ -700,7 +704,7 @@ function clearDefaults(){
   render();
 }
 
-const FILTER_IDS = ["fRent","fWar","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore"];
+const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore"];
 const SELECT_IDS = ["fSlope","fJgc"];
 const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
 let favs = new Set(JSON.parse(localStorage.getItem("hw_favs") || "[]"));
