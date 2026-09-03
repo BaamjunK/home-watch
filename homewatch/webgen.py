@@ -3,6 +3,8 @@
 평점 가중치는 기본값만 서버(config)에서 넣고, 대시보드에서 사용자가 조정하면
 클라이언트에서 즉시 재계산·재정렬한다(localStorage 유지). 항목별 점수(0~10)는
 매물마다 임베드돼 있으므로 재수집 없이 가중치만 바꿔볼 수 있다.
+필터·탭·정렬·가중치 상태는 URL 쿼리스트링에도 동기화되어("링크 복사" 버튼)
+링크를 받은 사람도 같은 화면을 본다. 기본 탭은 월세(B2).
 """
 
 import json
@@ -381,11 +383,12 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
     <p class="issue"><b>__GENERATED__</b> 기준 · 네이버 부동산 · 동일매물 묶음 · 실거래 포함</p>
   </header>
   <div class="tabs">
-    <button class="tab" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
-    <button class="tab on" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
+    <button class="tab on" data-trade="B2" onclick="setTrade('B2')">월세 <span id="cntB2"></span></button>
+    <button class="tab" data-trade="A1" onclick="setTrade('A1')">매매 <span id="cntA1"></span></button>
     <button class="wbtn" id="favBtn" onclick="toggleFavView()">☆ 관심 <span id="favCnt"></span></button>
     <button class="wbtn" id="grpBtn" onclick="toggleGroup()">단지별 묶기</button>
     <button class="wbtn" onclick="document.getElementById('wpanel').classList.toggle('open')">가중치 <span id="wsum"></span></button>
+    <button class="wbtn" id="shareBtn" onclick="copyShareUrl(event)">링크 복사</button>
   </div>
   <div class="wpanel" id="wpanel">
     <div class="wgrid" id="wgrid"></div>
@@ -397,11 +400,11 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <button class="msbtn" id="msBtn" onclick="toggleMs(event)">전체</button>
       <div class="mspanel" id="msPanel"></div>
     </div>
-    <div class="f" id="fRentBox" style="display:none"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="150"></div>
-    <div class="f" id="fWarMinBox" style="display:none"><label>보증금 최소(억)</label><input type="number" id="fWarMin" step="0.5" placeholder="1"></div>
-    <div class="f" id="fWarBox" style="display:none"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="4"></div>
-    <div class="f" id="fDealMinBox"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
-    <div class="f" id="fDealBox"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
+    <div class="f" id="fRentBox"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="150"></div>
+    <div class="f" id="fWarMinBox"><label>보증금 최소(억)</label><input type="number" id="fWarMin" step="0.5" placeholder="1"></div>
+    <div class="f" id="fWarBox"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="4"></div>
+    <div class="f" id="fDealMinBox" style="display:none"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
+    <div class="f" id="fDealBox" style="display:none"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
     <div class="f"><label>세대수 최소</label><input type="number" id="fHh" placeholder="300"></div>
     <div class="f"><label>역도보 최대(분)</label><input type="number" id="fWalk" placeholder="∞"></div>
@@ -427,7 +430,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk">저층 할인부족 제외</label></div>
-    <div class="f chk" id="fNoGapBox"><input type="checkbox" id="fNoGap"><label for="fNoGap">세안고 제외</label></div>
+    <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap">세안고 제외</label></div>
     <div class="f"><label>저장한 필터</label>
       <select id="fPreset" onchange="loadPreset(this.value)"><option value="">선택…</option></select>
     </div>
@@ -513,7 +516,7 @@ const SCORE_HELP = {
 const PY = 3.3058, RATE = 0.055;
 const NEW_DAYS = 3;   // 이 안에 올라온 매물은 신규로 본다
 let WEIGHTS = loadWeights();
-let trade = "A1", sortKey = "score_total", sortAsc = false, openRow = null;
+let trade = "B2", sortKey = "score_total", sortAsc = false, openRow = null;
 let byComplex = true, expandedKey = null;
 let selectedSigu = new Set();
 
@@ -612,15 +615,15 @@ function stationText(a){ if(!a.station_name) return "-";
   return a.station_name + " <span class='sub'>" + a.station_walk_min + "분"
     + (a.station_detour ? " 우회" : "") + "</span>"; }
 
-function setTrade(t){ trade = t; openRow = null; expandedKey = null;
-  document.querySelectorAll(".tab").forEach(el => el.classList.toggle("on", el.dataset.trade===t));
-  document.getElementById("fRentBox").style.display = t==="B2" ? "" : "none";
-  document.getElementById("fWarBox").style.display = t==="B2" ? "" : "none";
-  document.getElementById("fWarMinBox").style.display = t==="B2" ? "" : "none";
-  document.getElementById("fDealBox").style.display = t==="A1" ? "" : "none";
-  document.getElementById("fDealMinBox").style.display = t==="A1" ? "" : "none";
-  document.getElementById("fNoGapBox").style.display = t==="A1" ? "" : "none";
-  render(); }
+function applyTradeUi(){
+  document.querySelectorAll(".tab").forEach(el => el.classList.toggle("on", el.dataset.trade===trade));
+  document.getElementById("fRentBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fWarBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fWarMinBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fDealBox").style.display = trade==="A1" ? "" : "none";
+  document.getElementById("fDealMinBox").style.display = trade==="A1" ? "" : "none";
+  document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none"; }
+function setTrade(t){ trade = t; openRow = null; expandedKey = null; applyTradeUi(); render(); }
 
 const SORT_OPTS = [["score_total","평점 높은순",false],["_price","가격 낮은순",true],
   ["_price","가격 높은순",false],["_ppp","평당가 낮은순",true],["real_gap_pct","저평가순",true],
@@ -704,9 +707,92 @@ function clearDefaults(){
   render();
 }
 
-const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore"];
+const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore","fListed"];
 const SELECT_IDS = ["fSlope","fJgc"];
 const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
+
+// ── URL 공유: 필터·탭·지역·정렬·가중치를 쿼리스트링으로 — 링크만 보내면 같은 화면이 뜬다
+const URL_DEFAULTS = {fFar: "350", fVol: "1"};   // HTML 기본값과 같으면 URL에 싣지 않는다
+function urlState(){
+  const p = new URLSearchParams();
+  if (trade !== "B2") p.set("t", trade);
+  FILTER_IDS.concat(SELECT_IDS).forEach(id => {
+    const v = document.getElementById(id).value;
+    if (v !== (URL_DEFAULTS[id] ?? "")) p.set(id, v);
+  });
+  CHECK_IDS.forEach(id => { if (document.getElementById(id).checked) p.set(id, "1"); });
+  if (ALL_SIGUS.length && selectedSigu.size && selectedSigu.size !== ALL_SIGUS.length)
+    p.set("sigu", [...selectedSigu].join(","));
+  if (sortKey !== "score_total" || sortAsc){ p.set("sort", sortKey); if (sortAsc) p.set("asc", "1"); }
+  if (!byComplex) p.set("grp", "0");
+  if (Object.keys(SCORE_LABELS).some(k => WEIGHTS[k] !== DEFAULT_WEIGHTS[k]))
+    p.set("w", Object.keys(SCORE_LABELS).map(k => WEIGHTS[k]).join("-"));
+  return p;
+}
+let urlTimer = null;
+function updateUrl(){
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(() => {
+    const q = urlState().toString();
+    try { history.replaceState(null, "", q ? "?"+q : location.pathname); } catch(e){}
+  }, 250);
+}
+function applyUrlState(){
+  const p = new URLSearchParams(location.search);
+  if (![...p.keys()].length) return;
+  const t = p.get("t");
+  if (t === "A1" || t === "B2") trade = t;
+  FILTER_IDS.concat(SELECT_IDS).forEach(id => { if (p.has(id)) document.getElementById(id).value = p.get(id); });
+  CHECK_IDS.forEach(id => { if (p.has(id)) document.getElementById(id).checked = p.get(id) === "1"; });
+  if (p.has("sigu")){
+    const names = p.get("sigu").split(",").filter(s => ALL_SIGUS.includes(s));
+    if (names.length){
+      selectedSigu = new Set(names);
+      document.querySelectorAll(".msItem").forEach(c => c.checked = selectedSigu.has(c.value));
+      document.getElementById("msAll").checked = selectedSigu.size === ALL_SIGUS.length;
+      msLabel();
+    }
+  }
+  if (p.has("sort")){
+    sortKey = p.get("sort"); sortAsc = p.get("asc") === "1";
+    const i = SORT_OPTS.findIndex(o => o[0] === sortKey && o[2] === sortAsc);
+    if (i >= 0) document.getElementById("mSort").value = i;
+  }
+  if (p.get("grp") === "0"){ byComplex = false; document.getElementById("grpBtn").textContent = "매물별 보기"; }
+  if (p.has("w")){
+    const ks = Object.keys(SCORE_LABELS), vs = p.get("w").split("-").map(parseFloat);
+    if (vs.length === ks.length && vs.every(v => isFinite(v) && v >= 0))
+      ks.forEach((k,i) => WEIGHTS[k] = vs[i]);   // 링크의 가중치는 이 화면에만 적용, 저장하지 않는다
+  }
+  // 기본 필터(용적률·거래량)를 지운 링크면 안내문도 함께 숨긴다
+  if (document.getElementById("fFar").value === "" && document.getElementById("fVol").value === "")
+    document.getElementById("defnote").style.display = "none";
+}
+function copyShareUrl(e){
+  const q = urlState().toString();
+  const url = location.origin + location.pathname + (q ? "?"+q : "");
+  const btn = (e && e.currentTarget) || document.getElementById("shareBtn");
+  const done = ok => { btn.textContent = ok ? "복사됨 ✓" : "복사 실패"; setTimeout(() => btn.textContent = "링크 복사", 1500); };
+  const legacy = () => {          // clipboard API가 없거나 응답 없을 때: 임시 textarea 선택 복사
+    let ok = false;
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = url; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch(err){}
+    if (!ok) try { prompt("이 링크를 복사하세요", url); } catch(err){}
+    done(ok);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    let settled = false;
+    const to = setTimeout(() => { if (!settled){ settled = true; legacy(); } }, 600);
+    navigator.clipboard.writeText(url).then(
+      () => { if (!settled){ settled = true; clearTimeout(to); done(true); } },
+      () => { if (!settled){ settled = true; clearTimeout(to); legacy(); } });
+  } else legacy();
+}
 let favs = new Set(JSON.parse(localStorage.getItem("hw_favs") || "[]"));
 let favView = false;
 
@@ -907,6 +993,7 @@ function groupRow(g){
 }
 
 function render(){
+  updateUrl();
   const rows = filtered();
   const tb = document.getElementById("tbody");
   tb.innerHTML = "";
@@ -1127,10 +1214,12 @@ function toggleDetail(tr, a){
     else { sortKey = k; sortAsc = (k==="complex_name"||k==="_price"||k==="_ppp"||k==="grade_pct"||k==="station_walk_min"||k==="real_gap_pct"||k==="listed_days"); }
     render();
   }));
-  buildWeightPanel();
   buildMobileSort();
   renderPresets();
   updateFavBtn();
+  applyUrlState();
+  buildWeightPanel();
+  applyTradeUi();
   recompute();
   render();
 })();
