@@ -11,8 +11,10 @@
 import argparse
 import json
 import math
+import re
 import sys
 import time
+from datetime import date
 from pathlib import Path
 
 from . import naver, score, webgen
@@ -166,11 +168,68 @@ def collect(cfg):
             a["jeonse_min"] = c.get("jeonse_min") or 0   # 단지 전세 호가 범위
             a["jeonse_max"] = c.get("jeonse_max") or 0
 
+        attach_move_in(fin, dedup)
+
         pyeongs = attach_real_prices(fin, dedup)
         attach_complex_volume(fin, dedup, pyeongs)
         attach_poi(fin, dedup)
 
     return dedup
+
+
+_MOVE_IN_DATE = re.compile(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일")
+_MOVE_IN_TENDAYS = re.compile(r"(\d{4})년\s*(\d{1,2})월\s*(초순|상순|중순|하순)")
+
+
+def parse_move_in(label, today):
+    """입주가능일 라벨 → (짧은 표기, 오늘 기준 D-day 일수). 즉시=0, 협의만/미상=None."""
+    if not label:
+        return None, None
+    if "즉시" in label:
+        return "즉시", 0
+    m = _MOVE_IN_DATE.search(label)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            target = date(y, mo, d)
+        except ValueError:
+            return label, None
+        short = f"{mo}/{d}" if y == today.year else f"'{str(y)[2:]} {mo}/{d}"
+        return short, max(0, (target - today).days)   # 지난 날짜 = 사실상 즉시
+    m = _MOVE_IN_TENDAYS.search(label)
+    if m:
+        y, mo, part = int(m.group(1)), int(m.group(2)), m.group(3)
+        target = date(y, mo, {"초순": 5, "상순": 5, "중순": 15, "하순": 25}[part])
+        short = f"{mo}월{part}" if y == today.year else f"'{str(y)[2:]} {mo}월{part}"
+        return short, max(0, (target - today).days)
+    if "협의" in label:
+        return "협의", None
+    return label, None
+
+
+def attach_move_in(fin, rows):
+    """월세 대표 매물의 입주가능일 (매물 상세 SSR, 30일 캐시 — 매물 수명 내 거의 불변)."""
+    rent = [a for a in rows if a["trade_type"] == "B2"]
+    print(f"3b) 입주가능일 조회 (월세 {len(rent)}건) …", flush=True)
+    today = date.today()
+    fails = 0
+    for j, a in enumerate(rent, 1):
+        label = None
+        try:
+            label = fin.move_in(a["article_no"])
+        except Exception:
+            fails += 1
+        a["move_in"] = label
+        a["move_in_short"], a["move_in_days"] = parse_move_in(label, today)
+        if j % 100 == 0:
+            print(f"   … {j}/{len(rent)}", flush=True)
+            fin.detail_cache.save()
+    if fails:
+        print(f"   ! 입주가능일 실패 {fails}건 — 해당 매물은 표기 생략", file=sys.stderr, flush=True)
+    for a in rows:
+        a.setdefault("move_in", None)
+        a.setdefault("move_in_short", None)
+        a.setdefault("move_in_days", None)
 
 
 def attach_complex_volume(fin, rows, pyeongs):

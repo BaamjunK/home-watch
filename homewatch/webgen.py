@@ -200,6 +200,7 @@ tbody td { padding:var(--space-xs) var(--space-2xs); border-bottom:1px solid var
   vertical-align:middle; }
 /* 보조 지표(실거래대비·21년거래·평당·세대·연식)는 한 단계 작게 — 단지·호가에 자리를 내준다 */
 tbody td.hide-m { font-size:var(--text-xs); color:var(--color-muted); white-space:nowrap; }
+html.deal .mi { display:none !important; }   /* 입주 컬럼은 월세 탭에서만 */
 tbody td:nth-child(6) { white-space:nowrap; font-size:var(--text-xs); color:var(--color-muted); }
 tbody td:nth-child(10) { font-size:var(--text-xs); }
 tbody td:nth-child(11) { font-size:var(--text-xs); white-space:nowrap; }
@@ -455,6 +456,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       <th data-k="real_gap_pct" class="hide-m">실거래 대비(동일층) <span class="arrow"></span></th>
       <th data-k="_vol21" class="hide-m">21년 거래(단지) <span class="arrow"></span></th>
       <th data-k="listed_days" class="hide-m">등록일 <span class="arrow"></span></th>
+      <th data-k="move_in_days" class="hide-m mi">입주 <span class="arrow"></span></th>
       <th data-k="exclusive_m2">전용 <span class="arrow"></span></th>
       <th data-k="_ppp" class="hide-m">평당(환산) <span class="arrow"></span></th>
       <th data-k="households" class="hide-m">세대 <span class="arrow"></span></th>
@@ -602,6 +604,11 @@ function volCell(a){
   const cls = v.per_month >= 1 ? "down" : (v.count === 0 ? "up" : "");
   return '<span class="rp"><span class="'+cls+'">월 '+v.per_month+'</span>건</span>'; }
 
+function moveInCell(a){
+  if (!a.move_in_short) return "";
+  const nego = /협의/.test(a.move_in || "") && a.move_in_short !== "협의";
+  return a.move_in_short + (nego ? ' <span class="sub">협의</span>' : "");
+}
 function gapCell(a){
   if (a.real_gap_pct == null) return "-";
   const g = a.real_gap_pct;
@@ -622,12 +629,13 @@ function applyTradeUi(){
   document.getElementById("fWarMinBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fDealBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fDealMinBox").style.display = trade==="A1" ? "" : "none";
-  document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none"; }
+  document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none";
+  document.documentElement.classList.toggle("deal", trade==="A1"); }
 function setTrade(t){ trade = t; openRow = null; expandedKey = null; applyTradeUi(); render(); }
 
 const SORT_OPTS = [["score_total","평점 높은순",false],["_price","가격 낮은순",true],
   ["_price","가격 높은순",false],["_ppp","평당가 낮은순",true],["real_gap_pct","저평가순",true],
-  ["_vol21","거래 활발순",false],["listed_days","최근 등록순",true],["station_walk_min","역 가까운순",true],
+  ["_vol21","거래 활발순",false],["listed_days","최근 등록순",true],["move_in_days","입주 빠른순",true],["station_walk_min","역 가까운순",true],
   ["grade_pct","평지순",true],["exclusive_m2","면적 넓은순",false],["use_date","신축순",false],
   ["households","대단지순",false]];
 function buildMobileSort(){
@@ -901,6 +909,7 @@ function articleRow(a, indent){
     '<td class="hide-m" data-l="실거래대비">'+gapCell(a)+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell(a)+'</td>' +
     '<td class="hide-m" data-l="등록일">'+listedCell(a)+'</td>' +
+    '<td class="hide-m mi" data-l="입주">'+moveInCell(a)+'</td>' +
     '<td data-l="전용">'+(a.exclusive_m2||"-")+'㎡</td>' +
     '<td class="hide-m" data-l="평당">'+(a._ppp? Math.round(a._ppp/1e4).toLocaleString()+"만":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(indent ? "" : (a.households||"-"))+'</td>' +
@@ -948,6 +957,12 @@ function groupByComplex(rows){
     g.listed_date = newest ? newest.listed_date : null;
     const vols = g.items.map(a => a._vol21).filter(v => v != null);
     g._vol21 = vols.length ? Math.max(...vols) : null;
+    const soonest = g.items.filter(a => a.move_in_days != null)
+                           .sort((x, y) => x.move_in_days - y.move_in_days)[0]
+                    || g.items.find(a => a.move_in_short);
+    g.move_in = soonest ? soonest.move_in : null;
+    g.move_in_short = soonest ? soonest.move_in_short : null;
+    g.move_in_days = soonest ? soonest.move_in_days : null;
   });
   return groups;
 }
@@ -970,6 +985,7 @@ function groupRow(g){
     '<td class="hide-m" data-l="실거래대비">'+gapCell({real_gap_pct: g.real_gap_pct, trade_type: a.trade_type})+'</td>' +
     '<td class="hide-m" data-l="21년 단지">'+volCell({vol_2021: g._vol21 == null ? null : {per_month: g._vol21, count: Math.round(g._vol21*12)}})+'</td>' +
     '<td class="hide-m" data-l="등록일">'+listedCell({listed_days: g.listed_days, listed_date: g.listed_date})+'</td>' +
+    '<td class="hide-m mi" data-l="입주">'+moveInCell(g)+'</td>' +
     '<td data-l="전용">'+areaRange+'</td>' +
     '<td class="hide-m" data-l="평당">'+(g.minPpp? Math.round(g.minPpp/1e4).toLocaleString()+"만~":"-")+'</td>' +
     '<td class="hide-m" data-l="세대">'+(a.households||"-")+'</td>' +
@@ -1013,7 +1029,7 @@ function render(){
     tb.appendChild(frag);
     if (groups.length > 300) {
       const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="12" class="sub" style="text-align:center">상위 300개 단지만 표시 — 필터를 좁혀보세요</td>';
+      tr.innerHTML = '<td colspan="13" class="sub" style="text-align:center">상위 300개 단지만 표시 — 필터를 좁혀보세요</td>';
       tb.appendChild(tr);
     }
     return;
@@ -1025,7 +1041,7 @@ function render(){
   tb.appendChild(frag);
   if (rows.length > 500) {
     const tr = document.createElement("tr");
-    tr.innerHTML = '<td colspan="12" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
+    tr.innerHTML = '<td colspan="13" class="sub" style="text-align:center">상위 500건만 표시 — 필터를 좁혀보세요</td>';
     tb.appendChild(tr);
   }
 }
@@ -1146,6 +1162,7 @@ function toggleDetail(tr, a){
       fact("등록", a.listed_date || null,
            a.listed_days != null && a.listed_days <= NEW_DAYS ? "good" : "",
            a.listed_days != null ? relDays(a.listed_days) : null) +
+      (a.trade_type==="B2" ? fact("입주가능일", a.move_in || null) : "") +
       fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
       fact("확인매물", a.confirm_date || null, "",
            a.verification==="OWNER" ? "집주인 확인" : null) +
@@ -1163,7 +1180,7 @@ function toggleDetail(tr, a){
         ' · <a href="https://new.land.naver.com/complexes/'+v.complex_no+'?articleNo='+v.article_no+'" target="_blank" rel="noopener">보기</a>'+
         (v.description?'<div class="sub">'+v.description+'</div>':'')+'</div>').join("") + '</div>';
   }
-  d.innerHTML = '<td colspan="12">' +
+  d.innerHTML = '<td colspan="13">' +
     '<div class="bars">'+bars+'</div>' +
     facts +
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
@@ -1211,7 +1228,7 @@ function toggleDetail(tr, a){
   document.querySelectorAll("thead th").forEach(th => th.addEventListener("click", () => {
     const k = th.dataset.k;
     if (sortKey === k) sortAsc = !sortAsc;
-    else { sortKey = k; sortAsc = (k==="complex_name"||k==="_price"||k==="_ppp"||k==="grade_pct"||k==="station_walk_min"||k==="real_gap_pct"||k==="listed_days"); }
+    else { sortKey = k; sortAsc = (k==="complex_name"||k==="_price"||k==="_ppp"||k==="grade_pct"||k==="station_walk_min"||k==="real_gap_pct"||k==="listed_days"||k==="move_in_days"); }
     render();
   }));
   buildMobileSort();
@@ -1245,7 +1262,8 @@ def render(rows, cfg, out_path: Path):
             "jgc_transfer_restricted", "gap_sale", "dup_count", "variants",
             "station_name", "station_m", "station_walk_min", "station_detour",
             "real_prices", "real_summary", "vol_2021", "low_floor",
-            "listed_days", "listed_date", "first_seen", "exposure_date", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "listed_days", "listed_date", "first_seen", "exposure_date",
+            "move_in", "move_in_short", "move_in_days", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])

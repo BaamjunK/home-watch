@@ -18,6 +18,7 @@ navigator.webdriver 감지 시 404 로 튕긴다. 동작 조건(2026-08 검증):
 
 import json
 import random
+import re
 import sys
 import time
 from pathlib import Path
@@ -277,6 +278,29 @@ class FinLandClient:
                                          "articleSortType": "RANKING_DESC", "lastInfo": []}}
         return self._paged(ARTICLE_URL, body, "articlePagingRequest",
                            _parse_article, f"art2:{dong_code}:{trade_type}")
+
+    # 매물 상세 SSR 페이지에서 "입주가능일" 행을 뽑는다. front-api(article/basicInfo)의
+    # movingInInfo 는 페이지에 값이 있어도 null 인 매물이 많아(표본 3/3) 페이지가 정본.
+    _MOVE_IN_RE = re.compile(r"입주가능일</div><div[^>]*>([^<]+)</div>")
+
+    def move_in(self, article_no: str):
+        """입주가능일 라벨 ("즉시입주", "2026년 10월 하순", "2026년 11월 20일" 등)."""
+        key = f"mvin:{article_no}"
+        hit = self.detail_cache.get(key)
+        if hit is not None:
+            return hit or None          # 라벨 없음("")도 캐시해 재조회 방지
+        js = ("async no => { const r = await fetch('/articles/' + no,"
+              " {headers: {accept: 'text/html'}}); return await r.text(); }")
+        self._throttle()
+        try:
+            html = self._page.evaluate(js, str(article_no))
+        except Exception:
+            self._open_browser()
+            html = self._page.evaluate(js, str(article_no))
+        m = self._MOVE_IN_RE.search(html)
+        label = m.group(1).strip() if m else ""
+        self.detail_cache.put(key, label)
+        return label or None
 
     def complexes(self, dong_code: str, min_households: int = 0):
         """법정동 단지 목록 (세대수·좌표·연식) — 매물 있는 단지만."""
