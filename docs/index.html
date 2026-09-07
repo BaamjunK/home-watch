@@ -415,6 +415,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
       </select>
     </div>
     <div class="f"><label>등록 N일 이내</label><input type="number" id="fListed" placeholder="∞"></div>
+    <div class="f" id="fMoveInBox"><label>입주 N일 이내</label><input type="number" id="fMoveIn" placeholder="∞"></div>
     <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" value="1" placeholder="0"></div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease">임대혼합 제외</label></div>
@@ -615,6 +616,7 @@ function applyTradeUi(){
   document.getElementById("fRentBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fWarBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fWarMinBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fMoveInBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fDealBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fDealMinBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none";
@@ -665,6 +667,7 @@ function filtered(){
   const scMin = parseFloat(document.getElementById("fScore").value);
   const volMin = parseFloat(document.getElementById("fVol").value);
   const listedMax = parseFloat(document.getElementById("fListed").value);
+  const moveInMax = parseFloat(document.getElementById("fMoveIn").value);
   const slopeMax = parseFloat(document.getElementById("fSlope").value);
   const jgc = document.getElementById("fJgc").value;
   const noLease = document.getElementById("fNoLease").checked;
@@ -690,6 +693,7 @@ function filtered(){
     // 2020년 이후 준공은 2021년에 거래가 없거나 희박한 게 정상 — 거래량 필터 면제
     if (!isNaN(volMin) && !isNewBuild(a) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
     if (!isNaN(listedMax) && !(a.listed_days != null && a.listed_days <= listedMax)) return false;
+    if (trade==="B2" && !isNaN(moveInMax) && !(a.move_in_days != null && a.move_in_days <= moveInMax)) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
@@ -703,7 +707,7 @@ function clearDefaults(){
   render();
 }
 
-const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore","fListed"];
+const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore","fListed","fMoveIn"];
 const SELECT_IDS = ["fSlope","fJgc"];
 const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
 
