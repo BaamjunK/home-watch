@@ -74,6 +74,7 @@ def _parse_article(item):
         "article_no": a.get("articleNumber"),
         "complex_no": str(a.get("complexNumber") or ""),
         "complex_name": a.get("complexName"),
+        "article_name": a.get("articleName"),
         "bld_dong": a.get("dongName"),
         "trade_type": a.get("tradeType"),          # A1 매매 / B2 월세
         "real_estate_type": a.get("realEstateType"),
@@ -269,15 +270,17 @@ class FinLandClient:
             print(f"   ! {cache_key}: {self.max_pages}페이지 상한 도달 — 일부 누락 가능", flush=True)
         return out
 
-    def articles(self, dong_code: str, trade_type: str, extra_filter: dict):
-        """법정동 매물 목록 (서버측 필터 적용)."""
-        f = base_filter(dong_code, [trade_type])
+    def articles(self, dong_code: str, trade_type: str, extra_filter: dict,
+                 real_estate_types=("A01", "A04")):
+        """법정동 매물 목록 (서버측 필터 적용). 기본 유형은 아파트+재건축."""
+        f = base_filter(dong_code, [trade_type], real_estate_types)
         f.update(extra_filter)
         body = {"filter": f,
                 "articlePagingRequest": {"size": PAGE_SIZE, "userChannelType": "MOBILE",
                                          "articleSortType": "RANKING_DESC", "lastInfo": []}}
+        tag = "" if tuple(real_estate_types) == ("A01", "A04") else ":" + "-".join(real_estate_types)
         return self._paged(ARTICLE_URL, body, "articlePagingRequest",
-                           _parse_article, f"art2:{dong_code}:{trade_type}")
+                           _parse_article, f"art2:{dong_code}:{trade_type}{tag}")
 
     # 매물 상세 SSR 페이지에서 "입주가능일" 행을 뽑는다. front-api(article/basicInfo)의
     # movingInInfo 는 페이지에 값이 있어도 null 인 매물이 많아(표본 3/3) 페이지가 정본.

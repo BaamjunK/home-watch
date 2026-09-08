@@ -87,6 +87,11 @@ def collect(cfg):
             dong_rows = []
             try:
                 dong_rows += fin.articles(d["code"], "B2", rent_filter)
+                if rent_cfg.get("include_villa"):
+                    villa_filter = {k: v for k, v in rent_filter.items()
+                                    if k != "householdNumber"}   # 빌라엔 세대수 개념이 없다
+                    dong_rows += fin.articles(d["code"], "B2", villa_filter,
+                                              real_estate_types=("C02",))
                 dong_rows += fin.articles(d["code"], "A1", deal_filter)
             except Exception as e:
                 print(f"   ! {d['sigu']} {d['dong']}: {e}", file=sys.stderr, flush=True)
@@ -108,8 +113,11 @@ def collect(cfg):
         print(f"   원시 매물 {len(rows)}건, 단지 메타 {len(cplx_meta)}곳", flush=True)
 
         # 단지 메타 결합 + 로컬 필터 (서버 필터 재확인 + 쉐어하우스 제외)
+        this_year = date.today().year
+        villa_max_age = rent_cfg.get("villa_max_age_years", 5)
         out = []
         for a in rows:
+            a["is_villa"] = a.get("real_estate_type") == "C02"
             c = cplx_meta.get(a["complex_no"], {})
             a["households"] = c.get("households") or 0
             a["use_date"] = c.get("use_date") or (
@@ -120,6 +128,21 @@ def collect(cfg):
             a["gap_sale"] = a["trade_type"] == "A1" and is_gap_sale(a["description"])
             if not a.get("lat"):
                 a["lat"], a["lng"] = c.get("lat"), c.get("lng")
+
+            if a["is_villa"]:
+                # 신축만 수집: 준공연도 미상이거나 기준 연차 초과면 제외
+                y = (a["use_date"] or "")[:4]
+                if not (y.isdigit() and this_year - int(y) <= villa_max_age):
+                    continue
+                # 빌라는 단지명이 없다("빌라"뿐) — 동 이름으로 식별하고,
+                # 단지 단위 로직(그룹핑·POI·경사 캐시)을 위해 좌표 기반 가상 키를 준다
+                if not a["complex_name"]:
+                    name = a.get("article_name")
+                    a["complex_name"] = (name if name and name not in ("빌라", "연립", "다세대")
+                                         else f"{a.get('dong') or ''} 빌라".strip())
+                if not a["complex_no"]:
+                    a["complex_no"] = (f"V{a['lat']:.5f},{a['lng']:.5f}"
+                                       if a.get("lat") and a.get("lng") else f"Va{a['article_no']}")
 
             m2 = a.get("exclusive_m2")
             if a["trade_type"] == "B2":
@@ -142,7 +165,8 @@ def collect(cfg):
         print(f"   필터 통과 {len(out)}건 → 동일매물 그룹 {len(dedup)}건 (부분임대 제거 포함)", flush=True)
 
         # 3) 단지 상세 (임대세대·주차·용적률 — 최종 매물 단지만)
-        uniq = sorted({a["complex_no"] for a in dedup if a["complex_no"]})
+        uniq = sorted({a["complex_no"] for a in dedup
+                       if a["complex_no"] and a["complex_no"].isdigit()})
         print(f"3) 단지 상세 조회 ({len(uniq)}곳) …", flush=True)
         details = {}
         for j, cno in enumerate(uniq, 1):
@@ -240,7 +264,8 @@ def attach_complex_volume(fin, rows, pyeongs):
     순회해 합산하고, 함께 살 만한 평형(전용 59㎡+)의 거래량도 따로 남긴다.
     기간 데이터는 확정치라 30일 캐시 — 첫 실행만 오래 걸린다.
     """
-    cplx = sorted({a["complex_no"] for a in rows if a["complex_no"]})
+    cplx = sorted({a["complex_no"] for a in rows
+                   if a["complex_no"] and a["complex_no"].isdigit()})
     total_calls = sum(len(pyeongs.get(c, [])) for c in cplx)
     print(f"5) 2021년 단지 거래량 집계 (단지 {len(cplx)}곳 · 평형 {total_calls}개) …", flush=True)
     vols, done = {}, 0
@@ -411,7 +436,8 @@ def attach_real_prices(fin, rows):
 
     평형 매칭: 단지 평형 목록에서 전용면적이 가장 가까운 것(오차 ≤1.5㎡).
     """
-    pairs = sorted({(a["complex_no"], a["trade_type"]) for a in rows if a["complex_no"]})
+    pairs = sorted({(a["complex_no"], a["trade_type"])
+                    for a in rows if a["complex_no"] and a["complex_no"].isdigit()})
     uniq_cplx = sorted({p[0] for p in pairs})
     print(f"4) 실거래가 조회 (단지 {len(uniq_cplx)}곳) …", flush=True)
     pyeongs = {}
@@ -567,7 +593,7 @@ def drop_partial_rentals(rows, min_ratio):
                           f" {a['complex_name']} {a['exclusive_m2']}㎡"
                           f" {a['warranty_price']/1e8:.1f}억/{a['rent_price']/1e4:.0f}만", flush=True)
                     continue
-            elif a["sigu"] in med:
+            elif a["sigu"] in med and not a.get("is_villa"):
                 ratio = (eff / (a["exclusive_m2"] / PYEONG)) / med[a["sigu"]]
                 if ratio < min_ratio and not is_old_or_jgc(a):
                     print(f"   부분임대 의심 제외(시군구 중위의 {ratio:.0%}): {a['sigu']}"

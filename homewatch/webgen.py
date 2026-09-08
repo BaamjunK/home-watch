@@ -243,6 +243,7 @@ tbody tr.row td:first-child b { font-family:var(--font-num); font-size:var(--tex
 .tag.good { color:var(--color-good); border-color:var(--color-good); }
 .tag.gap { color:var(--color-accent); border-color:var(--color-accent); }
 .tag.jgc, .tag.dup { color:var(--color-muted); border-color:var(--color-rule-2); }
+.tag.villa { color:var(--color-ink); border-color:var(--color-neutral); }
 
 .fav { border:0; background:none; cursor:pointer; font-size:var(--text-md); padding:0 var(--space-3xs);
   color:var(--color-rule-2); line-height:1; vertical-align:-1px;
@@ -428,6 +429,13 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
     </div>
     <div class="f"><label>등록 N일 이내</label><input type="number" id="fListed" placeholder="∞"></div>
     <div class="f" id="fMoveInBox"><label>입주 N일 이내</label><input type="number" id="fMoveIn" placeholder="∞"></div>
+    <div class="f" id="fKindBox"><label>주거형태</label>
+      <select id="fKind">
+        <option value="">전체</option>
+        <option value="apt">아파트만</option>
+        <option value="villa">빌라만</option>
+      </select>
+    </div>
     <div class="f"><label>21년 월거래 최소</label><input type="number" id="fVol" step="0.1" value="1" placeholder="0"></div>
     <div class="f"><label>평점 최소</label><input type="number" id="fScore" step="0.5" placeholder="0"></div>
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease">임대혼합 제외</label></div>
@@ -629,6 +637,7 @@ function applyTradeUi(){
   document.getElementById("fWarBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fWarMinBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fMoveInBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fKindBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fDealBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fDealMinBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none";
@@ -680,6 +689,7 @@ function filtered(){
   const volMin = parseFloat(document.getElementById("fVol").value);
   const listedMax = parseFloat(document.getElementById("fListed").value);
   const moveInMax = parseFloat(document.getElementById("fMoveIn").value);
+  const kindSel = document.getElementById("fKind").value;
   const slopeMax = parseFloat(document.getElementById("fSlope").value);
   const jgc = document.getElementById("fJgc").value;
   const noLease = document.getElementById("fNoLease").checked;
@@ -695,9 +705,9 @@ function filtered(){
     if (trade==="A1" && !isNaN(dealMax) && a.deal_price > dealMax) return false;
     if (trade==="A1" && !isNaN(dealMin) && a.deal_price < dealMin) return false;
     if (!isNaN(areaMin) && (a.exclusive_m2||0) < areaMin) return false;
-    if (!isNaN(hhMin) && (a.households||0) < hhMin) return false;
+    if (!isNaN(hhMin) && !a.is_villa && (a.households||0) < hhMin) return false;
     if (!isNaN(walkMax) && (a.station_walk_min==null || a.station_walk_min > walkMax)) return false;
-    if (!isNaN(farMax) && (a.floor_area_ratio==null || a.floor_area_ratio > farMax)) return false;
+    if (!isNaN(farMax) && !a.is_villa && (a.floor_area_ratio==null || a.floor_area_ratio > farMax)) return false;
     if (!isNaN(slopeMax) && !(a.grade_pct != null && a.grade_pct < slopeMax)) return false;
     if (jgc === "only" && !a.is_jgc) return false;
     if (jgc === "excl" && a.is_jgc) return false;
@@ -706,6 +716,8 @@ function filtered(){
     if (!isNaN(volMin) && !isNewBuild(a) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
     if (!isNaN(listedMax) && !(a.listed_days != null && a.listed_days <= listedMax)) return false;
     if (trade==="B2" && !isNaN(moveInMax) && !(a.move_in_days != null && a.move_in_days <= moveInMax)) return false;
+    if (trade==="B2" && kindSel==="apt" && a.is_villa) return false;
+    if (trade==="B2" && kindSel==="villa" && !a.is_villa) return false;
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
@@ -720,7 +732,7 @@ function clearDefaults(){
 }
 
 const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore","fListed","fMoveIn"];
-const SELECT_IDS = ["fSlope","fJgc"];
+const SELECT_IDS = ["fSlope","fJgc","fKind"];
 const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
 
 // ── URL 공유: 필터·탭·지역·정렬·가중치를 쿼리스트링으로 — 링크만 보내면 같은 화면이 뜬다
@@ -880,6 +892,7 @@ function isNewBuild(a){
 function tags(a){
   let t = "";
   if (a.is_jgc) t += '<span class="tag jgc">재건축</span>';
+  if (a.is_villa) t += '<span class="tag villa">빌라</span>';
   if ((a.lease_ratio||0) >= 10) t += '<span class="tag lease">임대 '+a.lease_ratio+'%</span>';
   if (a.gap_sale) t += '<span class="tag gap">세안고</span>';
   if (a.dup_count) t += '<span class="tag dup">동일 +'+a.dup_count+'</span>';
@@ -1173,8 +1186,9 @@ function toggleDetail(tr, a){
       fact("관리비", a.mgmt_fee ? Math.round(a.mgmt_fee/1e4)+"만원" : null) +
       (a.trade_type==="A1" ? fact("세안고(전세끼고)", a.gap_sale ? "언급 있음" : "언급 없음",
            a.gap_sale?"warn":"") : ""));
-  const newland = "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
   const finland = "https://fin.land.naver.com/articles/"+a.article_no;
+  const newland = a.is_villa ? finland
+      : "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
   let vars = "";
   if (a.variants && a.variants.length) {
     vars = '<div class="vars"><div class="sub" style="margin-bottom:4px">같은 매물로 보이는 등록 '+a.variants.length+'건 (중개사만 다름)</div>' +
@@ -1190,7 +1204,7 @@ function toggleDetail(tr, a){
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
     '<div class="sub">'+[a.direction?("향: "+a.direction):null, a.realtor].filter(Boolean).join(" · ")+'</div>' +
     '<div class="links"><a href="'+newland+'" target="_blank" rel="noopener">네이버 부동산에서 보기</a>' +
-    '<a class="ghost" href="'+finland+'" target="_blank" rel="noopener">모바일 매물 페이지</a></div>' +
+    (a.is_villa ? '' : '<a class="ghost" href="'+finland+'" target="_blank" rel="noopener">모바일 매물 페이지</a>')+'</div>' +
     vars + '</td>';
   tr.after(d); openRow = d; fix();
 }
@@ -1267,7 +1281,7 @@ def render(rows, cfg, out_path: Path):
             "station_name", "station_m", "station_walk_min", "station_detour",
             "real_prices", "real_summary", "vol_2021", "low_floor",
             "listed_days", "listed_date", "first_seen", "exposure_date",
-            "move_in", "move_in_short", "move_in_days", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "move_in", "move_in_short", "move_in_days", "is_villa", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])

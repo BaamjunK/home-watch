@@ -61,7 +61,9 @@
       "단기사용"
     ],
     "min_value_ratio": 0.25,
-    "area_tolerance_m2": 2.0
+    "area_tolerance_m2": 2.0,
+    "include_villa": true,
+    "villa_max_age_years": 5
   },
   "deal": {
     "min_households": 500,

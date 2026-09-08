@@ -260,21 +260,24 @@ def value_scores(articles):
     def ppp(a):  # 평당 환산가
         return effective_price(a) / (a["exclusive_m2"] / PYEONG)
 
+    def kind(a):  # 빌라는 아파트와 시세 수준이 달라 같은 풀에 섞으면 늘 고평가된다
+        return "V" if a.get("is_villa") else "A"
+
     groups, fallback = {}, {}
     for a in articles:
         if not a.get("exclusive_m2"):
             continue
-        groups.setdefault((a["sigu"], a["trade_type"], _area_band(a["exclusive_m2"])), []).append(ppp(a))
-        fallback.setdefault((a["sido"], a["trade_type"], _area_band(a["exclusive_m2"])), []).append(ppp(a))
+        groups.setdefault((a["sigu"], a["trade_type"], _area_band(a["exclusive_m2"]), kind(a)), []).append(ppp(a))
+        fallback.setdefault((a["sido"], a["trade_type"], _area_band(a["exclusive_m2"]), kind(a)), []).append(ppp(a))
 
     out = {}
     for a in articles:
         if not a.get("exclusive_m2"):
             out[a["article_no"]] = 5.0
             continue
-        g = groups.get((a["sigu"], a["trade_type"], _area_band(a["exclusive_m2"])), [])
+        g = groups.get((a["sigu"], a["trade_type"], _area_band(a["exclusive_m2"]), kind(a)), [])
         if len(g) < 5:
-            g = fallback.get((a["sido"], a["trade_type"], _area_band(a["exclusive_m2"])), g)
+            g = fallback.get((a["sido"], a["trade_type"], _area_band(a["exclusive_m2"]), kind(a)), g)
         med = median(g) if g else None
         if not med:
             out[a["article_no"]] = 5.0
