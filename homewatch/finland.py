@@ -308,12 +308,11 @@ class FinLandClient:
     _PARKING_RE = re.compile(r"주차가능여부</div><div[^>]*>([^<]+)</div>")
 
     def villa_facts(self, article_no: str):
-        """빌라 매물의 주차 가능 여부 + 엘리베이터 유무. 30일 캐시.
+        """빌라 매물의 주차 가능 여부. 30일 캐시.
 
-        주차·입주일은 매물 상세 SSR에서, 엘리베이터는 basicInfo의
-        facilityInfo.etc(ELEVATOR)에서 읽는다(SSR엔 옵션이 렌더되지 않음).
+        매물 상세 SSR의 "주차가능여부" 행을 읽는다. 엘리베이터는 목록 서버
+        필터(optionTypes=OPF01)로 옮겨 여기서 더 확인하지 않는다.
         같은 SSR을 attach_move_in 이 또 받지 않도록 입주일을 선캐시한다.
-        옵션 4개 배열이 전부 비어 있으면 중개사 미기재로 보고 None.
         """
         key = f"vfac:{article_no}"
         hit = self.detail_cache.get(key)
@@ -331,21 +330,7 @@ class FinLandClient:
         parking = None if not m else ("가능" in m.group(1))
         mv = self._MOVE_IN_RE.search(html)
         self.detail_cache.put(f"mvin:{article_no}", mv.group(1).strip() if mv else "")
-
-        self._throttle()
-        elevator = None
-        try:
-            r = self._page.evaluate(
-                "async u => { const res = await fetch(u); return await res.text(); }",
-                f"/front-api/v1/article/basicInfo?articleNumber={article_no}"
-                "&realEstateType=C02&tradeType=B2")
-            fac = (json.loads(r).get("result") or {}).get("detailInfo", {}).get("facilityInfo") or {}
-            opts = [fac.get(k) or [] for k in ("life", "security", "etc", "aircon")]
-            if any(opts):
-                elevator = "ELEVATOR" in (fac.get("etc") or [])
-        except Exception:
-            pass
-        facts = {"parking": parking, "elevator": elevator}
+        facts = {"parking": parking}
         self.detail_cache.put(key, facts)
         return facts
 

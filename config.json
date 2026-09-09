@@ -18,7 +18,7 @@
     "min_households": 300,
     "min_exclusive_m2": 59.0,
     "min_warranty_won": 100000000,
-    "max_warranty_won": 400000000,
+    "max_warranty_won": 450000000,
     "max_rent_won": 1500000,
     "exclude_keywords": [
       "쉐어",
@@ -64,6 +64,7 @@
     "area_tolerance_m2": 2.0,
     "include_villa": true,
     "villa_max_age_years": 10,
+    "villa_min_exclusive_m2": 52.0,
     "villa_require_elevator": true,
     "villa_require_parking": true
   },

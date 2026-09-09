@@ -46,6 +46,10 @@ def is_gap_sale(desc):
     return any(k.replace(" ", "") in d for k in GAP_KEYWORDS)
 
 
+# 빌라 계열 매물 유형 — C02 무단지 빌라 / A05 연립 / A06 다세대 (네이버 "빌라" 카테고리)
+VILLA_TYPES = ("C02", "A05", "A06")
+
+
 def collect(cfg):
     crawler = cfg["crawler"]
     rent_cfg, deal_cfg = cfg["rent"], cfg["deal"]
@@ -90,8 +94,12 @@ def collect(cfg):
                 if rent_cfg.get("include_villa"):
                     villa_filter = {k: v for k, v in rent_filter.items()
                                     if k != "householdNumber"}   # 빌라엔 세대수 개념이 없다
+                    villa_filter["space"] = {"min": rent_cfg.get("villa_min_exclusive_m2",
+                                                                 rent_min_m2)}
+                    if rent_cfg.get("villa_require_elevator"):
+                        villa_filter["optionTypes"] = ["OPF01"]   # 엘리베이터 서버 필터
                     dong_rows += fin.articles(d["code"], "B2", villa_filter,
-                                              real_estate_types=("C02",))
+                                              real_estate_types=VILLA_TYPES)
                 dong_rows += fin.articles(d["code"], "A1", deal_filter)
             except Exception as e:
                 print(f"   ! {d['sigu']} {d['dong']}: {e}", file=sys.stderr, flush=True)
@@ -115,10 +123,10 @@ def collect(cfg):
         # 단지 메타 결합 + 로컬 필터 (서버 필터 재확인 + 쉐어하우스 제외)
         this_year = date.today().year
         villa_max_age = rent_cfg.get("villa_max_age_years", 5)
-        villa_drops = {"주차 불가/미상": 0, "엘리베이터 없음/미상": 0}
+        villa_drops = {"주차 불가/미상": 0}
         out = []
         for a in rows:
-            a["is_villa"] = a.get("real_estate_type") == "C02"
+            a["is_villa"] = a.get("real_estate_type") in VILLA_TYPES
             c = cplx_meta.get(a["complex_no"], {})
             a["households"] = c.get("households") or 0
             a["use_date"] = c.get("use_date") or (
@@ -147,7 +155,9 @@ def collect(cfg):
 
             m2 = a.get("exclusive_m2")
             if a["trade_type"] == "B2":
-                if (not m2 or m2 < rent_min_m2
+                min_m2 = (rent_cfg.get("villa_min_exclusive_m2", rent_min_m2)
+                          if a["is_villa"] else rent_min_m2)
+                if (not m2 or m2 < min_m2
                         or a["warranty_price"] < rent_cfg.get("min_warranty_won", 0)
                         or a["warranty_price"] > rent_cfg["max_warranty_won"]
                         or a["rent_price"] > rent_cfg["max_rent_won"] or a["rent_price"] <= 0
@@ -160,20 +170,19 @@ def collect(cfg):
                         or (a["households"] and a["households"] < deal_cfg["min_households"])):
                     continue
 
-            # 빌라는 조건을 다 통과한 것만 매물 상세를 열어 주차·엘리베이터 확인
-            if a["is_villa"] and (rent_cfg.get("villa_require_parking")
-                                  or rent_cfg.get("villa_require_elevator")):
-                try:
-                    facts = fin.villa_facts(a["article_no"])
-                except Exception:
-                    facts = {"parking": None, "elevator": None}
-                a["villa_parking"], a["villa_elevator"] = facts["parking"], facts["elevator"]
-                if rent_cfg.get("villa_require_parking") and facts["parking"] is not True:
-                    villa_drops["주차 불가/미상"] += 1
-                    continue
-                if rent_cfg.get("villa_require_elevator") and facts["elevator"] is not True:
-                    villa_drops["엘리베이터 없음/미상"] += 1
-                    continue
+            # 빌라 엘리베이터는 목록 서버 필터(OPF01)가 보장하고,
+            # 주차는 서버 필터가 없어 조건을 다 통과한 것만 상세를 열어 확인한다
+            if a["is_villa"]:
+                a["villa_elevator"] = True if rent_cfg.get("villa_require_elevator") else None
+                if rent_cfg.get("villa_require_parking"):
+                    try:
+                        facts = fin.villa_facts(a["article_no"])
+                    except Exception:
+                        facts = {"parking": None}
+                    a["villa_parking"] = facts.get("parking")
+                    if a["villa_parking"] is not True:
+                        villa_drops["주차 불가/미상"] += 1
+                        continue
             out.append(a)
 
         if any(villa_drops.values()):

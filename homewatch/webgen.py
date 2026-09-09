@@ -404,7 +404,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
     </div>
     <div class="f" id="fRentBox"><label>월세 최대(만원)</label><input type="number" id="fRent" placeholder="150"></div>
     <div class="f" id="fWarMinBox"><label>보증금 최소(억)</label><input type="number" id="fWarMin" step="0.5" placeholder="1"></div>
-    <div class="f" id="fWarBox"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="4"></div>
+    <div class="f" id="fWarBox"><label>보증금 최대(억)</label><input type="number" id="fWar" step="0.5" placeholder="4.5"></div>
     <div class="f" id="fDealMinBox" style="display:none"><label>매매가 최소(억)</label><input type="number" id="fDealMin" step="0.5" placeholder="8"></div>
     <div class="f" id="fDealBox" style="display:none"><label>매매가 최대(억)</label><input type="number" id="fDeal" step="0.5" placeholder="14"></div>
     <div class="f"><label>전용면적 최소(㎡)</label><input type="number" id="fArea" placeholder="59"></div>
