@@ -63,7 +63,9 @@
     "min_value_ratio": 0.25,
     "area_tolerance_m2": 2.0,
     "include_villa": true,
-    "villa_max_age_years": 5
+    "villa_max_age_years": 10,
+    "villa_require_elevator": true,
+    "villa_require_parking": true
   },
   "deal": {
     "min_households": 500,

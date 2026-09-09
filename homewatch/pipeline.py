@@ -115,6 +115,7 @@ def collect(cfg):
         # 단지 메타 결합 + 로컬 필터 (서버 필터 재확인 + 쉐어하우스 제외)
         this_year = date.today().year
         villa_max_age = rent_cfg.get("villa_max_age_years", 5)
+        villa_drops = {"주차 불가/미상": 0, "엘리베이터 없음/미상": 0}
         out = []
         for a in rows:
             a["is_villa"] = a.get("real_estate_type") == "C02"
@@ -158,7 +159,26 @@ def collect(cfg):
                         or not (deal_cfg["min_price_won"] <= a["deal_price"] <= deal_cfg["max_price_won"])
                         or (a["households"] and a["households"] < deal_cfg["min_households"])):
                     continue
+
+            # 빌라는 조건을 다 통과한 것만 매물 상세를 열어 주차·엘리베이터 확인
+            if a["is_villa"] and (rent_cfg.get("villa_require_parking")
+                                  or rent_cfg.get("villa_require_elevator")):
+                try:
+                    facts = fin.villa_facts(a["article_no"])
+                except Exception:
+                    facts = {"parking": None, "elevator": None}
+                a["villa_parking"], a["villa_elevator"] = facts["parking"], facts["elevator"]
+                if rent_cfg.get("villa_require_parking") and facts["parking"] is not True:
+                    villa_drops["주차 불가/미상"] += 1
+                    continue
+                if rent_cfg.get("villa_require_elevator") and facts["elevator"] is not True:
+                    villa_drops["엘리베이터 없음/미상"] += 1
+                    continue
             out.append(a)
+
+        if any(villa_drops.values()):
+            print("   빌라 제외: " + " · ".join(f"{k} {v}건" for k, v in villa_drops.items() if v),
+                  flush=True)
 
         dedup = group_same_units(out)
         dedup = drop_partial_rentals(dedup, rent_cfg.get("min_value_ratio", 0.25))

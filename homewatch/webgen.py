@@ -712,8 +712,9 @@ function filtered(){
     if (jgc === "only" && !a.is_jgc) return false;
     if (jgc === "excl" && a.is_jgc) return false;
     if (!isNaN(scMin) && a.score_total < scMin) return false;
-    // 2020년 이후 준공은 2021년에 거래가 없거나 희박한 게 정상 — 거래량 필터 면제
-    if (!isNaN(volMin) && !isNewBuild(a) && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
+    // 2020년 이후 준공은 2021년에 거래가 없거나 희박한 게 정상 — 거래량 필터 면제.
+    // 빌라는 단지 실거래 집계 자체가 없으므로 항상 면제.
+    if (!isNaN(volMin) && !isNewBuild(a) && !a.is_villa && !(a.vol_2021 && a.vol_2021.per_month >= volMin)) return false;
     if (!isNaN(listedMax) && !(a.listed_days != null && a.listed_days <= listedMax)) return false;
     if (trade==="B2" && !isNaN(moveInMax) && !(a.move_in_days != null && a.move_in_days <= moveInMax)) return false;
     if (trade==="B2" && kindSel==="apt" && a.is_villa) return false;
@@ -1180,6 +1181,8 @@ function toggleDetail(tr, a){
            a.listed_days != null && a.listed_days <= NEW_DAYS ? "good" : "",
            a.listed_days != null ? relDays(a.listed_days) : null) +
       (a.trade_type==="B2" ? fact("입주가능일", a.move_in || null) : "") +
+      (a.is_villa ? fact("주차", a.villa_parking===true ? "가능" : (a.villa_parking===false ? "불가" : null)) : "") +
+      (a.is_villa ? fact("엘리베이터", a.villa_elevator===true ? "있음" : (a.villa_elevator===false ? "없음" : null)) : "") +
       fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
       fact("확인매물", a.confirm_date || null, "",
            a.verification==="OWNER" ? "집주인 확인" : null) +
@@ -1281,7 +1284,8 @@ def render(rows, cfg, out_path: Path):
             "station_name", "station_m", "station_walk_min", "station_detour",
             "real_prices", "real_summary", "vol_2021", "low_floor",
             "listed_days", "listed_date", "first_seen", "exposure_date",
-            "move_in", "move_in_short", "move_in_days", "is_villa", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "move_in", "move_in_short", "move_in_days", "is_villa",
+            "villa_parking", "villa_elevator", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])
