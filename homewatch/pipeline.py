@@ -180,6 +180,8 @@ def collect(cfg):
                     except Exception:
                         facts = {"parking": None}
                     a["villa_parking"] = facts.get("parking")
+                    a["villa_loan_won"] = facts.get("loan_won")      # None=미기재
+                    a["villa_violating"] = facts.get("violating")    # 위반건축물
                     if a["villa_parking"] is not True:
                         villa_drops["주차 불가/미상"] += 1
                         continue
@@ -224,6 +226,7 @@ def collect(cfg):
         attach_move_in(fin, dedup)
 
         pyeongs = attach_real_prices(fin, dedup)
+        attach_villa_risk(fin, dedup, pyeongs)
         attach_complex_volume(fin, dedup, pyeongs)
         attach_poi(fin, dedup)
 
@@ -283,6 +286,87 @@ def attach_move_in(fin, rows):
         a.setdefault("move_in", None)
         a.setdefault("move_in_short", None)
         a.setdefault("move_in_days", None)
+
+
+def attach_villa_risk(fin, rows, pyeongs):
+    """빌라 보증금(전세사기) 위험 신호 종합 → a["villa_risk"].
+
+    자동으로 확인 가능한 신호만 본다 — 등기부등본(근저당·신탁·소유자)은
+    조회 자동화가 불가하므로 대시보드에는 "직접 확인" 안내를 함께 싣는다.
+    - 위험: 위반건축물 / 깡통율(보증금+융자 ÷ 같은 평형 매매 실거래 평균) ≥ 80%
+    - 주의: 융자 있음·미기재 / 깡통율 70~80% / 준공 2년 이내(시세 미형성) /
+            매매 시세 확인 불가(무단지 등)
+    - HUG 안심임대인 등록은 긍정 신호로 함께 표기한다.
+    """
+    villas = [a for a in rows if a.get("is_villa")]
+    if not villas:
+        return
+    print(f"4b) 빌라 보증금 위험 판정 ({len(villas)}건) …", flush=True)
+    this_year = date.today().year
+    for a in villas:
+        flags, level = [], "낮음"
+        gap_pct = None
+        # 깡통율 — 단지형(A05/A06)이고 같은 평형 매매 실거래가 있을 때만
+        cno = a.get("complex_no") or ""
+        if cno.isdigit():
+            py = _match_pyeong(pyeongs.get(cno) or [], a.get("exclusive_m2"))
+            if py is not None:
+                try:
+                    deals = fin.real_prices(cno, py, "A1")
+                except Exception:
+                    deals = []
+                prices = [r["deal"] for r in deals[:6] if r.get("deal")]
+                if prices:
+                    avg = sum(prices) / len(prices)
+                    exposure = a["warranty_price"] + (a.get("villa_loan_won") or 0)
+                    gap_pct = round(exposure / avg * 100)
+        if gap_pct is not None:
+            if gap_pct >= 80:
+                flags.append(f"보증금+융자가 매매 실거래의 {gap_pct}% (깡통 위험)")
+                level = "위험"
+            elif gap_pct >= 70:
+                flags.append(f"보증금+융자가 매매 실거래의 {gap_pct}%")
+                level = "주의"
+            else:
+                flags.append(f"보증금+융자 = 매매 실거래의 {gap_pct}% (여유)")
+        else:
+            flags.append("매매 시세 확인 불가 — 주변 시세·공시가 직접 확인 필요")
+            level = "주의"
+        if a.get("villa_violating") is True:
+            flags.append("위반건축물 — 보증보험 가입 불가 가능성")
+            level = "위험"
+        loan = a.get("villa_loan_won")
+        if loan:
+            flags.append(f"융자(근저당) {loan/1e8:.1f}억 표기")
+            if level != "위험":
+                level = "주의"
+        elif loan is None:
+            flags.append("융자금 미기재 — 등기부 확인 필요")
+            if level == "낮음":
+                level = "주의"
+        y = (a.get("use_date") or "")[:4]
+        if y.isdigit() and this_year - int(y) <= 2:
+            flags.append("준공 2년 이내 — 시세 미형성 구간")
+            if level == "낮음":
+                level = "주의"
+        if a.get("safe_lessor_hug"):
+            flags.append("HUG 안심임대인 등록 ✓")
+        a["villa_risk"] = {"level": level, "flags": flags, "gap_pct": gap_pct}
+    n = sum(1 for a in villas if (a.get("villa_risk") or {}).get("level") == "위험")
+    print(f"   위험 {n}건 / 주의 {sum(1 for a in villas if (a.get('villa_risk') or {}).get('level')=='주의')}건", flush=True)
+
+
+def _match_pyeong(pyeong_list, m2):
+    """전용면적에 가장 가까운 평형 번호 (오차 1.5㎡ 이내). 없으면 None."""
+    best, best_no = None, None
+    for p in pyeong_list or []:
+        pm2 = p.get("exclusive")
+        if not pm2 or m2 is None:
+            continue
+        d = abs(pm2 - m2)
+        if d <= 1.5 and (best is None or d < best):
+            best, best_no = d, p.get("number")
+    return best_no
 
 
 def attach_complex_volume(fin, rows, pyeongs):

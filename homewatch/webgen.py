@@ -244,6 +244,8 @@ tbody tr.row td:first-child b { font-family:var(--font-num); font-size:var(--tex
 .tag.gap { color:var(--color-accent); border-color:var(--color-accent); }
 .tag.jgc, .tag.dup { color:var(--color-muted); border-color:var(--color-rule-2); }
 .tag.villa { color:var(--color-ink); border-color:var(--color-neutral); }
+.tag.risk { color:var(--color-warn); border-color:var(--color-warn); font-weight:600; }
+.tag.risk2 { color:var(--color-warn); border-color:var(--color-rule-2); }
 
 .fav { border:0; background:none; cursor:pointer; font-size:var(--text-md); padding:0 var(--space-3xs);
   color:var(--color-rule-2); line-height:1; vertical-align:-1px;
@@ -441,6 +443,7 @@ tr.detail td { background:var(--color-paper-2); padding:var(--space-md) var(--sp
     <div class="f chk"><input type="checkbox" id="fNoLease"><label for="fNoLease">임대혼합 제외</label></div>
     <div class="f chk"><input type="checkbox" id="fLowOk"><label for="fLowOk">저층 할인부족 제외</label></div>
     <div class="f chk" id="fNoGapBox" style="display:none"><input type="checkbox" id="fNoGap"><label for="fNoGap">세안고 제외</label></div>
+    <div class="f chk" id="fNoRiskBox"><input type="checkbox" id="fNoRisk"><label for="fNoRisk">보증금 위험 제외</label></div>
     <div class="f"><label>저장한 필터</label>
       <select id="fPreset" onchange="loadPreset(this.value)"><option value="">선택…</option></select>
     </div>
@@ -638,6 +641,7 @@ function applyTradeUi(){
   document.getElementById("fWarMinBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fMoveInBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fKindBox").style.display = trade==="B2" ? "" : "none";
+  document.getElementById("fNoRiskBox").style.display = trade==="B2" ? "" : "none";
   document.getElementById("fDealBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fDealMinBox").style.display = trade==="A1" ? "" : "none";
   document.getElementById("fNoGapBox").style.display = trade==="A1" ? "" : "none";
@@ -695,6 +699,7 @@ function filtered(){
   const noLease = document.getElementById("fNoLease").checked;
   const lowOk = document.getElementById("fLowOk").checked;
   const noGap = document.getElementById("fNoGap").checked;
+  const noRisk = document.getElementById("fNoRisk").checked;
   return DATA.filter(a => {
     if (favView) { if (!favs.has(a.article_no)) return false; }
     else if (a.trade_type !== trade) return false;
@@ -722,6 +727,7 @@ function filtered(){
     if (noLease && (a.lease_ratio||0) >= 10) return false;
     if (lowOk && a.low_floor && !a.low_floor.fair) return false;
     if (noGap && a.gap_sale) return false;
+    if (noRisk && a.villa_risk && a.villa_risk.level === "위험") return false;
     return true;
   });
 }
@@ -734,7 +740,7 @@ function clearDefaults(){
 
 const FILTER_IDS = ["fRent","fWar","fWarMin","fDealMin","fDeal","fArea","fHh","fWalk","fFar","fVol","fScore","fListed","fMoveIn"];
 const SELECT_IDS = ["fSlope","fJgc","fKind"];
-const CHECK_IDS = ["fNoLease","fLowOk","fNoGap"];
+const CHECK_IDS = ["fNoLease","fLowOk","fNoGap","fNoRisk"];
 
 // ── URL 공유: 필터·탭·지역·정렬·가중치를 쿼리스트링으로 — 링크만 보내면 같은 화면이 뜬다
 const URL_DEFAULTS = {fFar: "350", fVol: "1"};   // HTML 기본값과 같으면 URL에 싣지 않는다
@@ -894,6 +900,9 @@ function tags(a){
   let t = "";
   if (a.is_jgc) t += '<span class="tag jgc">재건축</span>';
   if (a.is_villa) t += '<span class="tag villa">빌라</span>';
+  const vr = a.villa_risk;
+  if (vr && vr.level === "위험") t += '<span class="tag risk">보증금 위험</span>';
+  else if (vr && vr.level === "주의") t += '<span class="tag risk2">보증금 주의</span>';
   if ((a.lease_ratio||0) >= 10) t += '<span class="tag lease">임대 '+a.lease_ratio+'%</span>';
   if (a.gap_sale) t += '<span class="tag gap">세안고</span>';
   if (a.dup_count) t += '<span class="tag dup">동일 +'+a.dup_count+'</span>';
@@ -1190,6 +1199,13 @@ function toggleDetail(tr, a){
       (a.trade_type==="A1" ? fact("세안고(전세끼고)", a.gap_sale ? "언급 있음" : "언급 없음",
            a.gap_sale?"warn":"") : ""));
   const finland = "https://fin.land.naver.com/articles/"+a.article_no;
+  const riskGrp = !a.is_villa || !a.villa_risk ? "" : factGroup("보증금 안전 (자동 점검)",
+      fact("판정", a.villa_risk.level,
+           a.villa_risk.level === "위험" ? "warn" : (a.villa_risk.level === "낮음" ? "good" : ""),
+           "등기부등본·보증보험 가입 가능 여부는 계약 전 반드시 직접 확인") +
+      a.villa_risk.flags.map(f => fact("·", f,
+           /위험|위반/.test(f) ? "warn" : (/✓|여유/.test(f) ? "good" : ""))).join(""));
+
   const newland = a.is_villa ? finland
       : "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
   let vars = "";
@@ -1203,7 +1219,7 @@ function toggleDetail(tr, a){
   }
   d.innerHTML = '<td colspan="13">' +
     '<div class="bars">'+bars+'</div>' +
-    facts +
+    facts + riskGrp +
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
     '<div class="sub">'+[a.direction?("향: "+a.direction):null, a.realtor].filter(Boolean).join(" · ")+'</div>' +
     '<div class="links"><a href="'+newland+'" target="_blank" rel="noopener">네이버 부동산에서 보기</a>' +
@@ -1285,7 +1301,7 @@ def render(rows, cfg, out_path: Path):
             "real_prices", "real_summary", "vol_2021", "low_floor",
             "listed_days", "listed_date", "first_seen", "exposure_date",
             "move_in", "move_in_short", "move_in_days", "is_villa",
-            "villa_parking", "villa_elevator", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
+            "villa_parking", "villa_elevator", "villa_risk", "safe_lessor_hug", "vol_2021_pyeong", "real_gap_pct", "real_gap_basis", "jeonse_min", "jeonse_max",
             "pyeong_name", "pyeong_households", "poi")})
     html = (TEMPLATE
             .replace("__TITLE__", cfg["web"]["title"])

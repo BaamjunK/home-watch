@@ -88,6 +88,7 @@ def _parse_article(item):
         "direction": detail.get("direction"),
         "description": detail.get("articleFeatureDescription") or "",
         "confirm_date": verify.get("articleConfirmDate"),
+        "safe_lessor_hug": detail.get("isSafeLessorOfHug"),
         "exposure_date": verify.get("exposureStartDate"),   # 매물이 올라온 날
         "verification": verify.get("verificationType"),
         "realtor": broker.get("brokerageName"),
@@ -306,15 +307,34 @@ class FinLandClient:
         return label or None
 
     _PARKING_RE = re.compile(r"주차가능여부</div><div[^>]*>([^<]+)</div>")
+    _LOAN_RE = re.compile(r"융자금</div><div[^>]*>([^<]+)</div>")
+    _VIOLATION_RE = re.compile(r"위반건축물 여부</div><div[^>]*>([^<]+)</div>")
+
+    @staticmethod
+    def _parse_won(text):
+        """"1억 5,000만원"/"5,000만원"/"없음" → 원. 해석 불가면 None."""
+        if not text:
+            return None
+        t = text.replace(",", "").replace(" ", "")
+        if t == "없음":
+            return 0
+        won = 0
+        m = re.search(r"(\d+)억", t)
+        if m:
+            won += int(m.group(1)) * 10**8
+        m = re.search(r"(\d+)만", t)
+        if m:
+            won += int(m.group(1)) * 10**4
+        return won or None
 
     def villa_facts(self, article_no: str):
-        """빌라 매물의 주차 가능 여부. 30일 캐시.
+        """빌라 매물의 주차·융자금·위반건축물. 30일 캐시.
 
-        매물 상세 SSR의 "주차가능여부" 행을 읽는다. 엘리베이터는 목록 서버
-        필터(optionTypes=OPF01)로 옮겨 여기서 더 확인하지 않는다.
+        전부 매물 상세 SSR의 표 행에서 읽는다(행이 없으면 미기재=None).
+        엘리베이터는 목록 서버 필터(optionTypes=OPF01)가 보장하므로 안 본다.
         같은 SSR을 attach_move_in 이 또 받지 않도록 입주일을 선캐시한다.
         """
-        key = f"vfac:{article_no}"
+        key = f"vfac2:{article_no}"
         hit = self.detail_cache.get(key)
         if hit is not None:
             return hit
@@ -330,7 +350,11 @@ class FinLandClient:
         parking = None if not m else ("가능" in m.group(1))
         mv = self._MOVE_IN_RE.search(html)
         self.detail_cache.put(f"mvin:{article_no}", mv.group(1).strip() if mv else "")
-        facts = {"parking": parking}
+        lm = self._LOAN_RE.search(html)
+        loan_won = self._parse_won(lm.group(1)) if lm else None   # None=미기재
+        vm = self._VIOLATION_RE.search(html)
+        violating = None if not vm else ("해당없음" not in vm.group(1))
+        facts = {"parking": parking, "loan_won": loan_won, "violating": violating}
         self.detail_cache.put(key, facts)
         return facts
 
