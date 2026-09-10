@@ -24,8 +24,26 @@ schedule_next_wake() {
 }
 schedule_next_wake
 
-# caffeinate: 수집(30분 안팎) 중 유휴/시스템 잠자기로 끊기지 않게 잡아둔다 (-s 는 전원 연결 시)
-/usr/bin/caffeinate -is /usr/bin/python3 -m homewatch.pipeline
+# 수집 + 워치독: 잠자기로 얼어붙은 실행이 밤을 새우며 다음 회차를 막는 일을 끊는다.
+# launchd 는 이전 인스턴스가 살아있으면 새 회차를 띄우지 않으므로, 총 실행이
+# 상한(2시간 30분 — 회차 간격 3시간보다 짧게)을 넘으면 이번 회차를 버리고 끝낸다.
+# 잠자기 중엔 감시 루프도 함께 얼지만, 깨어나는 즉시 벽시계 경과를 보고 발동한다.
+MAX_RUN_SEC=$((150 * 60))
+/usr/bin/python3 -m homewatch.pipeline &
+PIPE_PID=$!
+/usr/bin/caffeinate -is -w "$PIPE_PID" &   # 파이프라인이 살아있는 동안만 잠자기 억제
+START=$(date +%s)
+while kill -0 "$PIPE_PID" 2>/dev/null; do
+    if [ $(( $(date +%s) - START )) -ge "$MAX_RUN_SEC" ]; then
+        echo "$(date '+%F %T') 워치독: 실행 $((MAX_RUN_SEC/60))분 초과 — 이번 회차 중단, 다음 회차가 이어받는다"
+        kill "$PIPE_PID" 2>/dev/null || true
+        sleep 10
+        kill -9 "$PIPE_PID" 2>/dev/null || true
+        exit 1
+    fi
+    sleep 30
+done
+wait "$PIPE_PID"   # 파이프라인이 실패로 끝났으면 set -e 로 여기서 중단
 
 # first_seen.json 은 되돌릴 수 없는 관측 기록이라 함께 남긴다
 git add data/listings.json docs/index.html data/first_seen.json
