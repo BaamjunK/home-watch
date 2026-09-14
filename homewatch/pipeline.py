@@ -96,10 +96,19 @@ def collect(cfg):
                                     if k != "householdNumber"}   # 빌라엔 세대수 개념이 없다
                     villa_filter["space"] = {"min": rent_cfg.get("villa_min_exclusive_m2",
                                                                  rent_min_m2)}
-                    if rent_cfg.get("villa_require_elevator"):
-                        villa_filter["optionTypes"] = ["OPF01"]   # 엘리베이터 서버 필터
+                    # 엘리베이터는 서버 필터(OPF01)를 쓰지 않는다 — 옵션 미기재
+                    # 매물이 통째로 빠지므로, 수집 후 basicInfo 로 확인해
+                    # "없음이 확인된 것"만 거른다 (미기재는 통과 + 미확인 표시)
                     dong_rows += fin.articles(d["code"], "B2", villa_filter,
                                               real_estate_types=VILLA_TYPES)
+                    # 도시형생활주택: 네이버가 A01(아파트)로 분류하는 소단지 —
+                    # 세대수 상한 서버 필터로 300세대 미만만 받아 빌라 기준을 적용
+                    urban_filter = dict(villa_filter)
+                    urban_filter["householdNumber"] = {"min": 0, "max": rent_cfg["min_households"] - 1}
+                    for u in fin.articles(d["code"], "B2", urban_filter,
+                                          real_estate_types=("A01",)):
+                        u["_villa_src"] = True
+                        dong_rows.append(u)
                 dong_rows += fin.articles(d["code"], "A1", deal_filter)
             except Exception as e:
                 print(f"   ! {d['sigu']} {d['dong']}: {e}", file=sys.stderr, flush=True)
@@ -123,10 +132,12 @@ def collect(cfg):
         # 단지 메타 결합 + 로컬 필터 (서버 필터 재확인 + 쉐어하우스 제외)
         this_year = date.today().year
         villa_max_age = rent_cfg.get("villa_max_age_years", 5)
-        villa_drops = {"주차 불가/미상": 0}
+        villa_drops = {"주차 불가/미상": 0, "엘리베이터 없음(확인)": 0}
         out = []
         for a in rows:
-            a["is_villa"] = a.get("real_estate_type") in VILLA_TYPES
+            a["is_villa"] = (a.get("real_estate_type") in VILLA_TYPES
+                             or (a.pop("_villa_src", False)
+                                 and "도시형" in (a.get("complex_name") or "")))
             c = cplx_meta.get(a["complex_no"], {})
             a["households"] = c.get("households") or 0
             a["use_date"] = c.get("use_date") or (
@@ -161,7 +172,8 @@ def collect(cfg):
                         or a["warranty_price"] < rent_cfg.get("min_warranty_won", 0)
                         or a["warranty_price"] > rent_cfg["max_warranty_won"]
                         or a["rent_price"] > rent_cfg["max_rent_won"] or a["rent_price"] <= 0
-                        or (a["households"] and a["households"] < rent_cfg["min_households"])
+                        or (not a["is_villa"] and a["households"]
+                            and a["households"] < rent_cfg["min_households"])
                         or is_sharehouse(a["description"], rent_cfg["exclude_keywords"])):
                     continue
             else:
@@ -173,18 +185,20 @@ def collect(cfg):
             # 빌라 엘리베이터는 목록 서버 필터(OPF01)가 보장하고,
             # 주차는 서버 필터가 없어 조건을 다 통과한 것만 상세를 열어 확인한다
             if a["is_villa"]:
-                a["villa_elevator"] = True if rent_cfg.get("villa_require_elevator") else None
-                if rent_cfg.get("villa_require_parking"):
-                    try:
-                        facts = fin.villa_facts(a["article_no"])
-                    except Exception:
-                        facts = {"parking": None}
-                    a["villa_parking"] = facts.get("parking")
-                    a["villa_loan_won"] = facts.get("loan_won")      # None=미기재
-                    a["villa_violating"] = facts.get("violating")    # 위반건축물
-                    if a["villa_parking"] is not True:
-                        villa_drops["주차 불가/미상"] += 1
-                        continue
+                try:
+                    facts = fin.villa_facts(a["article_no"], a.get("real_estate_type") or "C02")
+                except Exception:
+                    facts = {}
+                a["villa_parking"] = facts.get("parking")
+                a["villa_loan_won"] = facts.get("loan_won")      # None=미기재
+                a["villa_violating"] = facts.get("violating")    # 위반건축물
+                a["villa_elevator"] = facts.get("elevator")      # None=옵션 미기재(미확인)
+                if rent_cfg.get("villa_require_parking") and a["villa_parking"] is not True:
+                    villa_drops["주차 불가/미상"] += 1
+                    continue
+                if rent_cfg.get("villa_require_elevator") and a["villa_elevator"] is False:
+                    villa_drops["엘리베이터 없음(확인)"] += 1
+                    continue
             out.append(a)
 
         if any(villa_drops.values()):
@@ -349,6 +363,8 @@ def attach_villa_risk(fin, rows, pyeongs):
             flags.append("준공 2년 이내 — 시세 미형성 구간")
             if level == "낮음":
                 level = "주의"
+        if a.get("villa_elevator") is None:
+            flags.append("엘리베이터 미확인 (중개사 옵션 미기재)")
         if a.get("safe_lessor_hug"):
             flags.append("HUG 안심임대인 등록 ✓")
         a["villa_risk"] = {"level": level, "flags": flags, "gap_pct": gap_pct}

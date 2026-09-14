@@ -1191,7 +1191,8 @@ function toggleDetail(tr, a){
            a.listed_days != null ? relDays(a.listed_days) : null) +
       (a.trade_type==="B2" ? fact("입주가능일", a.move_in || null) : "") +
       (a.is_villa ? fact("주차", a.villa_parking===true ? "가능" : (a.villa_parking===false ? "불가" : null)) : "") +
-      (a.is_villa ? fact("엘리베이터", a.villa_elevator===true ? "있음" : (a.villa_elevator===false ? "없음" : null)) : "") +
+      (a.is_villa ? fact("엘리베이터", a.villa_elevator===true ? "있음" : (a.villa_elevator===false ? "없음" : "미확인"),
+           a.villa_elevator==null ? "warn" : "", a.villa_elevator==null ? "중개사 옵션 미기재 — 방문 시 확인" : null) : "") +
       fact("처음 확인", a.first_seen ? a.first_seen.replace("T", " ") : null) +
       fact("확인매물", a.confirm_date || null, "",
            a.verification==="OWNER" ? "집주인 확인" : null) +
@@ -1206,8 +1207,11 @@ function toggleDetail(tr, a){
       a.villa_risk.flags.map(f => fact("·", f,
            /위험|위반/.test(f) ? "warn" : (/✓|여유/.test(f) ? "good" : ""))).join(""));
 
-  const newland = a.is_villa ? finland
-      : "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no;
+  // 도시형생활주택은 빌라 취급이지만 단지 페이지가 있다 — 단지번호 유무로 분기
+  const hasComplexPage = a.complex_no && /^\d+$/.test(a.complex_no);
+  const newland = hasComplexPage
+      ? "https://new.land.naver.com/complexes/"+a.complex_no+"?articleNo="+a.article_no
+      : finland;
   let vars = "";
   if (a.variants && a.variants.length) {
     vars = '<div class="vars"><div class="sub" style="margin-bottom:4px">같은 매물로 보이는 등록 '+a.variants.length+'건 (중개사만 다름)</div>' +
@@ -1223,7 +1227,7 @@ function toggleDetail(tr, a){
     (a.description ? '<div class="desc">'+a.description+'</div>' : '') +
     '<div class="sub">'+[a.direction?("향: "+a.direction):null, a.realtor].filter(Boolean).join(" · ")+'</div>' +
     '<div class="links"><a href="'+newland+'" target="_blank" rel="noopener">네이버 부동산에서 보기</a>' +
-    (a.is_villa ? '' : '<a class="ghost" href="'+finland+'" target="_blank" rel="noopener">모바일 매물 페이지</a>')+'</div>' +
+    (hasComplexPage ? '<a class="ghost" href="'+finland+'" target="_blank" rel="noopener">모바일 매물 페이지</a>' : '')+'</div>' +
     vars + '</td>';
   tr.after(d); openRow = d; fix();
 }

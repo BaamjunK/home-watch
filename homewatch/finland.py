@@ -327,14 +327,15 @@ class FinLandClient:
             won += int(m.group(1)) * 10**4
         return won or None
 
-    def villa_facts(self, article_no: str):
-        """빌라 매물의 주차·융자금·위반건축물. 30일 캐시.
+    def villa_facts(self, article_no: str, real_estate_type: str = "C02"):
+        """빌라 매물의 주차·융자금·위반건축물·엘리베이터. 30일 캐시.
 
-        전부 매물 상세 SSR의 표 행에서 읽는다(행이 없으면 미기재=None).
-        엘리베이터는 목록 서버 필터(optionTypes=OPF01)가 보장하므로 안 본다.
+        주차·융자·위반은 매물 상세 SSR의 표 행에서(행이 없으면 미기재=None),
+        엘리베이터는 basicInfo facilityInfo에서 읽는다 — 옵션 4개 배열이
+        전부 비어 있으면 중개사 미기재로 보고 None(미확인)을 준다.
         같은 SSR을 attach_move_in 이 또 받지 않도록 입주일을 선캐시한다.
         """
-        key = f"vfac2:{article_no}"
+        key = f"vfac4:{article_no}"
         hit = self.detail_cache.get(key)
         if hit is not None:
             return hit
@@ -354,7 +355,29 @@ class FinLandClient:
         loan_won = self._parse_won(lm.group(1)) if lm else None   # None=미기재
         vm = self._VIOLATION_RE.search(html)
         violating = None if not vm else ("해당없음" not in vm.group(1))
-        facts = {"parking": parking, "loan_won": loan_won, "violating": violating}
+
+        self._throttle()
+        elevator = None
+        try:
+            r = self._page.evaluate(
+                "async u => { const res = await fetch(u); return await res.text(); }",
+                f"/front-api/v1/article/basicInfo?articleNumber={article_no}"
+                f"&realEstateType={real_estate_type}&tradeType=B2")
+            fac = (json.loads(r).get("result") or {}).get("detailInfo", {}).get("facilityInfo") or {}
+            opts = [fac.get(k) or [] for k in ("life", "security", "etc", "aircon")]
+            if any(opts):
+                elevator = "ELEVATOR" in (fac.get("etc") or [])
+            # 도시형(A01) 등 아파트형 상세엔 "주차가능여부" 행이 없다 —
+            # 같은 응답의 단지 주차 정보로 폴백 (매물마다 필드 구성이 달라 둘 다 본다)
+            if parking is None:
+                if fac.get("isParkingPossible") is not None:
+                    parking = bool(fac.get("isParkingPossible"))
+                elif fac.get("totalParkingCount") is not None:
+                    parking = fac["totalParkingCount"] > 0
+        except Exception:
+            pass
+        facts = {"parking": parking, "loan_won": loan_won,
+                 "violating": violating, "elevator": elevator}
         self.detail_cache.put(key, facts)
         return facts
 
